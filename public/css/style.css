@@ -1,0 +1,27 @@
+body {
+    font-family: Tahoma, Arial, sans-serif;
+    background-color: #f8f9fa;
+}
+
+.card {
+    border-radius: 10px;
+    overflow: hidden;
+}
+
+.card-header {
+    font-weight: bold;
+}
+
+.progress {
+    height: 25px;
+}
+
+#progress-log {
+    font-family: monospace;
+    font-size: 0.9rem;
+    line-height: 1.5;
+}
+
+table {
+    font-size: 0.9rem;
+}

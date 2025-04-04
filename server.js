@@ -1,0 +1,229 @@
+/**
+ * PlayStation API Tool - Server
+ * 
+ * Express server with SSR using EJS for PlayStation API interaction
+ */
+
+const express = require('express');
+const path = require('path');
+const fileUpload = require('express-fileupload');
+const fs = require('fs').promises;
+const http = require('http');
+const socketIo = require('socket.io');
+const { runPsnApiTool } = require('./psn-api');
+
+// Initialize Express app
+const app = express();
+const server = http.createServer(app);
+const io = socketIo(server);
+
+// Set up EJS as the view engine
+app.set('view engine', 'ejs');
+app.set('views', path.join(__dirname, 'views'));
+
+// Middleware
+app.use(express.static(path.join(__dirname, 'public')));
+app.use(express.urlencoded({ extended: true }));
+app.use(express.json());
+app.use(fileUpload({
+  createParentPath: true,
+  limits: { 
+    fileSize: 5 * 1024 * 1024 // 5MB max file size
+  },
+}));
+
+// Store active jobs
+const activeJobs = new Map();
+
+// Socket.io connection
+io.on('connection', (socket) => {
+  console.log('Client connected:', socket.id);
+  
+  socket.on('disconnect', () => {
+    console.log('Client disconnected:', socket.id);
+  });
+});
+
+// Routes
+app.get('/', (req, res) => {
+  res.render('index', { title: 'Sony Account Login Tool' });
+});
+
+app.post('/run-tool', async (req, res) => {
+  try {
+    const { email, password, npsso, useProxy } = req.body;
+    let proxyFile = null;
+    let proxyData = null;
+    
+    console.log('Received request with email:', email);
+    
+    // Check if proxy file was uploaded and useProxy is checked
+    if (req.files && req.files.proxyFile && useProxy !== 'false') {
+      const uploadedFile = req.files.proxyFile;
+      const uploadDir = path.join(__dirname, 'uploads');
+      
+      // Ensure upload directory exists
+      await fs.mkdir(uploadDir, { recursive: true });
+      
+      // Save the file
+      const filePath = path.join(uploadDir, uploadedFile.name);
+      await uploadedFile.mv(filePath);
+      
+      // Read proxy data
+      proxyFile = filePath;
+      proxyData = await fs.readFile(filePath, 'utf8');
+      console.log('Proxy file loaded:', uploadedFile.name);
+    }
+    
+    // Generate a unique job ID
+    const jobId = Date.now().toString();
+    console.log('Generated job ID:', jobId);
+    
+    // Create a socket room for this job
+    const roomName = `job-${jobId}`;
+    
+    // Store job info
+    activeJobs.set(jobId, {
+      status: 'running',
+      startTime: new Date(),
+      email,
+      results: null
+    });
+    
+    // Render the result page immediately
+    res.render('result', { 
+      title: 'Processing Request',
+      jobId,
+      initialStatus: 'running'
+    });
+    
+    // اضافه کردن تأخیر کوتاه برای اطمینان از اینکه صفحه نتیجه کاملاً بارگذاری شده است
+    setTimeout(() => {
+      console.log('Starting PSN API tool for job:', jobId);
+      
+      // Run the PSN API tool in the background
+      runPsnApiTool({
+        email,
+        password,
+        npsso,
+        proxyFile,
+        proxyData,
+        onProgress: (message) => {
+          console.log(`[${jobId}] Progress:`, message);
+          io.to(roomName).emit('progress', { message });
+        },
+        onData: (data) => {
+          console.log(`[${jobId}] Data update`);
+          io.to(roomName).emit('data', { data });
+        },
+        onComplete: (results) => {
+          console.log(`[${jobId}] Complete`);
+          activeJobs.set(jobId, {
+            ...activeJobs.get(jobId),
+            status: 'completed',
+            endTime: new Date(),
+            results
+          });
+          
+          io.to(roomName).emit('complete', { results });
+        },
+        onError: (error) => {
+          console.error(`[${jobId}] Error:`, error);
+          activeJobs.set(jobId, {
+            ...activeJobs.get(jobId),
+            status: 'error',
+            endTime: new Date(),
+            error: error.message
+          });
+          
+          io.to(roomName).emit('error', { error: error.message });
+        }
+      });
+    }, 1000);
+    
+  } catch (error) {
+    console.error('Error processing request:', error);
+    res.render('error', { 
+      title: 'Error',
+      message: error.message
+    });
+  }
+});
+
+// API endpoint to get job status
+app.get('/api/job/:jobId', (req, res) => {
+  const { jobId } = req.params;
+  const job = activeJobs.get(jobId);
+  
+  if (!job) {
+    return res.status(404).json({ error: 'Job not found' });
+  }
+  
+  res.json(job);
+});
+
+// Join a job room for real-time updates
+// Join a job room for real-time updates
+app.post('/api/job/:jobId/join', (req, res) => {
+  const { jobId } = req.params;
+  const { socketId } = req.body;
+  
+  if (!socketId) {
+    return res.status(400).json({ error: 'Socket ID is required' });
+  }
+  
+  const socket = io.sockets.sockets.get(socketId);
+  if (!socket) {
+    return res.status(404).json({ error: 'Socket not found', socketId });
+  }
+  
+  const roomName = `job-${jobId}`;
+  socket.join(roomName);
+  
+  console.log(`Socket ${socketId} joined room ${roomName}`);
+  
+  // ارسال یک پیام اولیه برای اطمینان از عملکرد صحیح
+  socket.emit('progress', { message: 'اتصال به سرور برقرار شد.' });
+  
+  res.json({ success: true, room: roomName });
+});
+
+// API endpoint for proxy testing
+app.post('/api/test-proxy', async (req, res) => {
+  try {
+    const { proxy } = req.body;
+    
+    // Implement proxy testing logic here
+    // This is a placeholder that simulates proxy testing
+    const testResult = {
+      proxy,
+      valid: Math.random() > 0.3, // Simulate 70% success rate
+      protocol: proxy.includes('socks5') ? 'SOCKS5' : 'HTTP',
+      ip: '123.45.67.89', // Simulated IP
+      responseTime: Math.floor(Math.random() * 500) + 100 // Random response time between 100-600ms
+    };
+    
+    setTimeout(() => {
+      res.json(testResult);
+    }, 500); // Simulate network delay
+    
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Batch processing endpoint
+app.post('/api/batch-process', async (req, res) => {
+  try {
+    // Implementation for batch processing would go here
+    res.json({ success: true, jobId: Date.now().toString() });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Start the server
+const PORT = process.env.PORT || 3000;
+server.listen(PORT, () => {
+  console.log(`Server running on http://localhost:${PORT}`);
+});

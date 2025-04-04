@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>
+        <%= title %>
+    </title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
+    <link rel="stylesheet" href="/css/style.css">
+</head>
+
+<body>
+    <div class="container mt-5">
+        <div class="row justify-content-center">
+            <div class="col-md-10">
+                <div class="card shadow">
+                    <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
+                        <h1 class="h4 mb-0">نتایج</h1>
+                        <span id="status-badge" class="badge bg-info">در حال پردازش</span>
+                    </div>
+                    <div class="card-body">
+                        <div class="mb-4">
+                            <h2 class="h5">پیشرفت</h2>
+                            <div class="progress mb-2">
+                                <div id="progress-bar" class="progress-bar progress-bar-striped progress-bar-animated"
+                                    style="width: 0%"></div>
+                            </div>
+                            <div id="progress-log" class="bg-light p-3 mt-2 border rounded"
+                                style="max-height: 200px; overflow-y: auto;">
+                                <div class="text-muted">در انتظار شروع پردازش...</div>
+                            </div>
+                        </div>
+
+                        <div class="mb-4">
+                            <h2 class="h5">اطلاعات حساب کاربری</h2>
+                            <div id="profile-data" class="bg-light p-3 border rounded">
+                                <div class="text-muted">در انتظار دریافت اطلاعات...</div>
+                            </div>
+                        </div>
+
+                        <div class="mb-4">
+                            <h2 class="h5">بازی‌ها</h2>
+                            <div id="games-data" class="bg-light p-3 border rounded">
+                                <div class="text-muted">در انتظار دریافت اطلاعات...</div>
+                            </div>
+                        </div>
+
+                        <div class="mb-4">
+                            <h2 class="h5">دستگاه‌ها</h2>
+                            <div id="devices-data" class="bg-light p-3 border rounded">
+                                <div class="text-muted">در انتظار دریافت اطلاعات...</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="card-footer">
+                        <a href="/" class="btn btn-secondary">بازگشت به صفحه اصلی</a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const jobId = '<%= jobId %>';
+            const statusBadge = document.getElementById('status-badge');
+            const progressBar = document.getElementById('progress-bar');
+            const progressLog = document.getElementById('progress-log');
+            const profileData = document.getElementById('profile-data');
+            const gamesData = document.getElementById('games-data');
+            const devicesData = document.getElementById('devices-data');
+
+            let progressCount = 0;
+            let totalSteps = 20; // Estimated number of steps
+
+            // Connect to Socket.IO
+            const socket = io();
+
+            // اضافه کردن لاگ برای بررسی اتصال
+            console.log('Connecting to Socket.IO...');
+
+            // منتظر اتصال Socket.IO شوید، سپس به اتاق بپیوندید
+            socket.on('connect', () => {
+                console.log('Socket connected, ID:', socket.id);
+
+                // Join the job room
+                fetch(`/api/job/${jobId}/join`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ socketId: socket.id })
+                })
+                    .then(response => response.json())
+                    .then(data => {
+                        console.log('Joined room:', data);
+                        // اضافه کردن یک پیام به لاگ
+                        const logEntry = document.createElement('div');
+                        logEntry.textContent = 'اتصال به سرور برقرار شد.';
+                        progressLog.appendChild(logEntry);
+                    })
+                    .catch(err => {
+                        console.error('Error joining room:', err);
+                    });
+            });
+            // Handle progress updates
+            socket.on('progress', (data) => {
+                const message = data.message;
+
+                // Add message to log
+                const logEntry = document.createElement('div');
+                logEntry.textContent = message;
+                progressLog.appendChild(logEntry);
+                progressLog.scrollTop = progressLog.scrollHeight;
+
+                // Update progress bar
+                progressCount++;
+                const percentage = Math.min(Math.round((progressCount / totalSteps) * 100), 95);
+                progressBar.style.width = `${percentage}%`;
+                progressBar.textContent = `${percentage}%`;
+            });
+
+            // Handle data updates
+            socket.on('data', (data) => {
+                updateDataDisplay(data.data);
+            });
+
+            // Handle completion
+            socket.on('complete', (data) => {
+                statusBadge.textContent = 'تکمیل شد';
+                statusBadge.classList.remove('bg-info');
+                statusBadge.classList.add('bg-success');
+
+                progressBar.style.width = '100%';
+                progressBar.textContent = '100%';
+                progressBar.classList.remove('progress-bar-animated');
+
+                updateDataDisplay(data.results);
+
+                const logEntry = document.createElement('div');
+                logEntry.textContent = 'پردازش با موفقیت به پایان رسید.';
+                logEntry.classList.add('text-success', 'fw-bold');
+                progressLog.appendChild(logEntry);
+            });
+
+            // Handle errors
+            socket.on('error', (data) => {
+                statusBadge.textContent = 'خطا';
+                statusBadge.classList.remove('bg-info');
+                statusBadge.classList.add('bg-danger');
+
+                const logEntry = document.createElement('div');
+                logEntry.textContent = `خطا: ${data.error}`;
+                logEntry.classList.add('text-danger', 'fw-bold');
+                progressLog.appendChild(logEntry);
+            });
+
+            // Function to update data display
+            function updateDataDisplay(data) {
+                // Update profile data
+                if (data.profile) {
+                    profileData.innerHTML = '';
+                    const profileTable = document.createElement('table');
+                    profileTable.className = 'table table-sm';
+
+                    const profile = data.profile;
+                    for (const [key, value] of Object.entries(profile)) {
+                        const row = profileTable.insertRow();
+                        const keyCell = row.insertCell(0);
+                        const valueCell = row.insertCell(1);
+
+                        keyCell.textContent = key;
+                        keyCell.className = 'fw-bold';
+                        valueCell.textContent = value;
+                    }
+
+                    profileData.appendChild(profileTable);
+                }
+
+                // Update games data
+                if (data.games && data.games.length > 0) {
+                    gamesData.innerHTML = '';
+                    const gamesTable = document.createElement('table');
+                    gamesTable.className = 'table table-sm';
+
+                    // Add header
+                    const thead = gamesTable.createTHead();
+                    const headerRow = thead.insertRow();
+                    ['نام', 'پلتفرم', 'عضویت', 'قابل دانلود'].forEach(text => {
+                        const th = document.createElement('th');
+                        th.textContent = text;
+                        headerRow.appendChild(th);
+                    });
+
+                    // Add rows
+                    const tbody = gamesTable.createTBody();
+                    data.games.forEach(game => {
+                        const row = tbody.insertRow();
+                        row.insertCell(0).textContent = game.name;
+                        row.insertCell(1).textContent = game.platform;
+                        row.insertCell(2).textContent = game.membership;
+                        row.insertCell(3).textContent = game.isDownloadable ? 'بله' : 'خیر';
+                    });
+
+                    gamesData.appendChild(gamesTable);
+                }
+
+                // Update devices data
+                if (data.devices && data.devices.length > 0) {
+                    devicesData.innerHTML = '';
+                    const devicesTable = document.createElement('table');
+                    devicesTable.className = 'table table-sm';
+
+                    // Add header
+                    const thead = devicesTable.createTHead();
+                    const headerRow = thead.insertRow();
+                    ['نام', 'پلتفرم'].forEach(text => {
+                        const th = document.createElement('th');
+                        th.textContent = text;
+                        headerRow.appendChild(th);
+                    });
+
+                    // Add rows
+                    const tbody = devicesTable.createTBody();
+                    data.devices.forEach(device => {
+                        const row = tbody.insertRow();
+                        row.insertCell(0).textContent = device.name;
+                        row.insertCell(1).textContent = device.platform;
+                    });
+
+                    devicesData.appendChild(devicesTable);
+                }
+            }
+        });
+    </script>
+</body>
+
+</html>
