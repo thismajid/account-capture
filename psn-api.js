@@ -15,7 +15,8 @@ const TARGET_URLS = [
   'https://web.np.playstation.com/api/graphql/v1/op?operationName=getPurchasedGameList',
   'https://web.np.playstation.com/api/graphql/v1/op?operationName=queryOracleUserProfileFullSubscription',
   'https://web.np.playstation.com/api/graphql/v1/op?operationName=getUserDevices',
-  'https://accounts.api.playstation.com/api/v1/accounts/me/communication'
+  'https://accounts.api.playstation.com/api/v1/accounts/me/communication',
+  /\/twostepbackupcodes$/
 ];
 
 // Page configurations
@@ -158,13 +159,9 @@ function extractOperationName(url) {
  * @returns {Promise<void>}
  */
 async function setupRequestAndResponseTracking(page, npssoValue, targetUrls, finalResponses, onProgress, onData) {
-  // Enable request interception
   await page.setRequestInterception(true);
-
-  // Map to track requests and their associated data
   const requestMap = new Map();
 
-  // Handle request events
   page.on('request', request => {
     const url = request.url();
     const headers = request.headers();
@@ -173,7 +170,6 @@ async function setupRequestAndResponseTracking(page, npssoValue, targetUrls, fin
     const postData = request.postData();
     let modified = false;
 
-    // Store request data for later correlation with response
     requestMap.set(request._requestId, {
       url,
       method,
@@ -183,7 +179,6 @@ async function setupRequestAndResponseTracking(page, npssoValue, targetUrls, fin
       timestamp: new Date().toISOString()
     });
 
-    // Add NPSSO cookie to HTTP/HTTPS requests if needed
     if (isRelevantRequest(url)) {
       if (headers.cookie) {
         if (!headers.cookie.includes('npsso=')) {
@@ -196,7 +191,6 @@ async function setupRequestAndResponseTracking(page, npssoValue, targetUrls, fin
       }
     }
 
-    // Continue the request with modified headers if needed
     if (modified) {
       request.continue({ headers });
       onProgress(`Modified request to: ${url}`);
@@ -205,7 +199,6 @@ async function setupRequestAndResponseTracking(page, npssoValue, targetUrls, fin
     }
   });
 
-  // Handle response events
   page.on('response', async response => {
     try {
       const request = response.request();
@@ -213,23 +206,17 @@ async function setupRequestAndResponseTracking(page, npssoValue, targetUrls, fin
       const requestId = request._requestId;
       const requestInfo = requestMap.get(requestId);
 
-      // Process only relevant responses
       if (requestInfo && isRelevantResponse(url)) {
         const responseHeaders = response.headers();
         let responseData = await extractResponseData(response, responseHeaders);
 
-        // Check if this is one of our target URLs
+        // بررسی اینکه url با یکی از targetUrl ها مچ بشه
         for (const targetUrl of targetUrls) {
-          if (url.startsWith(targetUrl)) {
+          if (isMatchingTargetUrl(url, targetUrl)) {
             onProgress(`Found target request: ${url}`);
 
-            // Extract operation name or endpoint
             const operationName = extractOperationName(url);
-
-            // Process specific response data
             processTargetResponse(operationName, responseData, finalResponses);
-
-            // Send updated data to client
             onData(finalResponses);
             break;
           }
@@ -238,10 +225,17 @@ async function setupRequestAndResponseTracking(page, npssoValue, targetUrls, fin
     } catch (error) {
       console.error(`Error processing response: ${error.message}`);
     } finally {
-      // Clean up request from map
       requestMap.delete(response.request()._requestId);
     }
   });
+}
+
+// این تابع جدید اضافه شده
+function isMatchingTargetUrl(url, targetUrl) {
+  if (targetUrl instanceof RegExp) {
+    return targetUrl.test(url);
+  }
+  return url === targetUrl || url.startsWith(targetUrl);
 }
 
 /**
@@ -251,6 +245,8 @@ async function setupRequestAndResponseTracking(page, npssoValue, targetUrls, fin
  * @param {Object} finalResponses - Object to store processed responses
  */
 function processTargetResponse(operationName, responseData, finalResponses) {
+  console.log('operationName === ', operationName);
+
   switch (operationName) {
     case 'communication':
       if (responseData.realName) {
@@ -295,6 +291,14 @@ function processTargetResponse(operationName, responseData, finalResponses) {
           name: item.deviceName,
           platform: item.devicePlatform,
         }));
+      }
+      break;
+
+    case 'twostepbackupcodes':
+      console.log('responseData =-= ', responseData);
+      
+      if (responseData.backup_codes) {
+        finalResponses.backupCodes = responseData.backup_codes.map((item) => item.code)
       }
       break;
   }
@@ -533,6 +537,65 @@ async function runPsnApiTool(options) {
       cookies.push(createNpssoCookie(npsso));
     }
 
+    try {
+      onProgress('Attempting to click on the specified element...');
+      await page1.waitForXPath('/html/body/div[3]/div/div[2]/div/div/div/div[2]/div/div[2]/div/div/ul/li[1]/ul/li[2]/div', { timeout: 10000 });
+      const [element] = await page1.$x('/html/body/div[3]/div/div[2]/div/div/div/div[2]/div/div[2]/div/div/ul/li[1]/ul/li[2]/div');
+
+      if (element) {
+        onProgress('Element found. Clicking...');
+        await element.click();
+        onProgress('Click successful.');
+
+        // Wait after click to allow any actions to complete
+        await wait(3000, 'after clicking the element', onProgress);
+
+        // کد جدید برای کلیک دوم با XPath اصلاح شده
+        // Wait for navigation after first click
+        onProgress('Waiting for navigation after first click...');
+        try {
+          // Wait for potential navigation to complete
+          await page1.waitForNavigation({ waitUntil: 'networkidle2', timeout: 10000 }).catch(() => {
+            onProgress('No navigation occurred or navigation already completed.');
+          });
+
+          // Wait a bit for the new page to stabilize
+          await wait(5000, 'for the new page to stabilize after navigation', onProgress);
+
+          // Now try to find and click the element with the specified XPath
+          onProgress('Attempting to find and click on element with XPath: //*[@id="ember138"]/div/div/div/div[1]/div');
+
+          // Wait for the element to be available in the DOM
+          await page1.waitForXPath('//*[@id="ember138"]/div/div/div/div[1]/div', { timeout: 15000 }).catch(e => {
+            onProgress(`Element with specified XPath not found in time: ${e.message}`);
+          });
+
+          // Try to find the element
+          const [secondElement] = await page1.$x('/html/body/div[3]/div/div[2]/div/div/div/div[2]/div/div[3]/div/div/div/div/div/main/div/div/div[2]/div[1]/ul[3]/li[3]/button/div/div/div/div[1]/div');
+
+          if (secondElement) {
+            onProgress('Found element with specified XPath. Clicking...');
+            await secondElement.click();
+            onProgress('Successfully clicked on the second element.');
+
+            // Wait after second click to allow any actions to complete
+            await wait(5000, 'after clicking the second element', onProgress);
+          } else {
+            onProgress('Element with specified XPath not found. Continuing with the process.');
+          }
+        } catch (error) {
+          onProgress(`Error while handling second click: ${error.message}`);
+          // Continue with the process even if this step fails
+        }
+      } else {
+        onProgress('Element not found with the specified XPath.');
+      }
+    } catch (error) {
+      onProgress(`Error while trying to click the element: ${error.message}`);
+    }
+
+    console.log('finalResponses ======> ', finalResponses)
+
     // Setup second page
     const page2 = await createConfiguredPage(
       browser,
@@ -601,22 +664,62 @@ async function runPsnApiTool(options) {
       onData,
       proxyConfig
     );
-    
+
     await navigateToPage(page3, 'https://store.playstation.com/en-us/pages/latest', 'PlayStation Store Latest page', onProgress);
-    
+
     await wait(10000, 'for PlayStation Store page to fully load', onProgress);
-    
+
     const storePageCookies = await page3.cookies();
     onProgress(`Retrieved ${storePageCookies.length} cookies from the PlayStation Store page`);
-    
+
     const updatedAllCookies = combineUniqueCookies(allCookies, storePageCookies);
     onProgress(`Updated combined unique cookies: ${updatedAllCookies.length}`);
-    
-    const transactions = await axios.get('https://web.np.playstation.com/api/graphql/v1/transact/transaction/history?limit=25&startDate=2010-03-15T00:00:00.000+0330&endDate=2028-04-04T23:59:59.999+0330&includePurged=false&transactionTypes=CREDIT,CYCLE_SUBSCRIPTION,DEBIT,DEPOSIT_CHARGE,DEPOSIT_VOUCHER,PRODUCT_PURCHASE,REFUND_PAYMENT_CHARGE,REFUND_PAYMENT_WALLET,VOUCHER_PURCHASE,WALLET_BALANCE_CONVERSION', {
+
+    const backups = await axios.get('https://ca.account.sony.com/api/v1/user/accounts/6928868522581896841/twostepbackupcodes', {
       headers: {
-        'Cookie': updatedAllCookies.map(cookie => `${cookie.name}=${cookie.value}`).join('; ')
+        'Cookie': allCookies.map(cookie => `${cookie.name}=${cookie.value}`).join('; ')
       },
+    })
+
+    finalResponses = {
+      ...finalResponses,
+      backupCodes: backups.data.backup_codes.map((item) => item.code)
+    }
+
+    const transactions = await axios({
+      method: 'GET',
+      url: 'https://web.np.playstation.com/api/graphql/v1/transact/transaction/history',
+      headers: {
+        'Cookie': updatedAllCookies.map(cookie => `${cookie.name}=${cookie.value}`).join('; '),
+        'Content-Type': 'application/json',
+        'Accept': 'application/json'
+      },
+      data: {
+        query: 'query GetTransactionHistory($input: TransactionHistoryInput!) { transactionHistory(input: $input) { ...fields } }',
+        variables: {
+          input: {
+            limit: 100,
+            startDate: '2010-05-05T00:00:00.000+0430',
+            endDate: '2025-04-05T23:59:59.999+0330',
+            includePurged: false,
+            transactionTypes: [
+              'CREDIT',
+              'CYCLE_SUBSCRIPTION',
+              'DEBIT',
+              'DEPOSIT_CHARGE',
+              'DEPOSIT_VOUCHER',
+              'PRODUCT_PURCHASE',
+              'REFUND_PAYMENT_CHARGE',
+              'REFUND_PAYMENT_WALLET',
+              'VOUCHER_PURCHASE',
+              'WALLET_BALANCE_CONVERSION'
+            ]
+          }
+        }
+      }
     });
+
+    console.log(transactions)
 
     finalResponses = {
       ...finalResponses, trans: transactions.data.transactions.filter(t => t.additionalInfo?.orderItems?.[0]?.totalPrice && Math.abs(t.additionalInfo.orderItems[0].totalPrice.value) > 0).map(t => {
@@ -638,7 +741,7 @@ async function runPsnApiTool(options) {
   } finally {
     // Close the browser
     if (browser) {
-      await browser.close();
+      // await browser.close();
       onProgress('Browser closed.');
     }
   }
