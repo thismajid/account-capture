@@ -37,6 +37,9 @@ app.use(
 // Store active jobs
 const activeJobs = new Map();
 
+// Path for the proxy database file
+const PROXY_DB_PATH = path.join(__dirname, "data", "proxies.txt");
+
 // Socket.io connection
 io.on("connection", (socket) => {
   console.log("Client connected:", socket.id);
@@ -45,6 +48,69 @@ io.on("connection", (socket) => {
     console.log("Client disconnected:", socket.id);
   });
 });
+
+// Ensure data directory exists
+async function ensureDataDirectory() {
+  const dataDir = path.join(__dirname, "data");
+  try {
+    await fs.mkdir(dataDir, { recursive: true });
+    // Create proxy database file if it doesn't exist
+    try {
+      await fs.access(PROXY_DB_PATH);
+    } catch (error) {
+      // File doesn't exist, create it
+      await fs.writeFile(PROXY_DB_PATH, "", "utf8");
+      console.log("Created proxy database file");
+    }
+  } catch (error) {
+    console.error("Error ensuring data directory:", error);
+  }
+}
+
+// Add proxies to database without duplicates
+async function addProxiesToDatabase(proxies) {
+  try {
+    // Read existing proxies
+    let existingContent = "";
+    try {
+      existingContent = await fs.readFile(PROXY_DB_PATH, "utf8");
+    } catch (error) {
+      // File might not exist yet
+      console.log("Proxy database file not found, will create new");
+    }
+
+    const existingProxies = new Set(
+      existingContent.split("\n").filter((line) => line.trim() !== "")
+    );
+
+    // Add new proxies
+    let addedCount = 0;
+    for (const proxy of proxies) {
+      if (proxy.trim() !== "" && !existingProxies.has(proxy)) {
+        existingProxies.add(proxy);
+        addedCount++;
+      }
+    }
+
+    // Write back to file
+    await fs.writeFile(
+      PROXY_DB_PATH,
+      Array.from(existingProxies).join("\n"),
+      "utf8"
+    );
+
+    return {
+      totalProxies: existingProxies.size,
+      addedProxies: addedCount,
+    };
+  } catch (error) {
+    console.error("Error adding proxies to database:", error);
+    throw error;
+  }
+}
+
+// Initialize data directory on startup
+ensureDataDirectory();
 
 // Routes
 app.get("/", (req, res) => {
@@ -79,9 +145,19 @@ app.post("/run-tool", async (req, res) => {
       await uploadedFile.mv(filePath);
 
       // Read proxy data
-      proxyFile = filePath;
       proxyData = await fs.readFile(filePath, "utf8");
       console.log("Proxy file loaded:", uploadedFile.name);
+
+      // Add proxies to database
+      const proxies = proxyData
+        .split("\n")
+        .filter((line) => line.trim() !== "");
+      const dbResult = await addProxiesToDatabase(proxies);
+      console.log(
+        `Added ${dbResult.addedProxies} new proxies to database. Total proxies: ${dbResult.totalProxies}`
+      );
+
+      proxyFile = filePath;
     }
 
     // Generate a unique job ID
@@ -212,6 +288,52 @@ app.post("/api/test-proxy", async (req, res) => {
     setTimeout(() => {
       res.json(testResult);
     }, 500); // Simulate network delay
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// API endpoint to upload proxies
+app.post("/api/upload-proxies", async (req, res) => {
+  try {
+    if (!req.files || !req.files.proxyFile) {
+      return res.status(400).json({ error: "No proxy file uploaded" });
+    }
+
+    const uploadedFile = req.files.proxyFile;
+    const proxyData = uploadedFile.data.toString("utf8");
+    const proxies = proxyData.split("\n").filter((line) => line.trim() !== "");
+
+    // Add to database
+    const result = await addProxiesToDatabase(proxies);
+
+    res.json({
+      success: true,
+      message: `Added ${result.addedProxies} new proxies. Total proxies in database: ${result.totalProxies}`,
+      ...result,
+    });
+  } catch (error) {
+    console.error("Error uploading proxies:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// API endpoint to get all proxies
+app.get("/api/proxies", async (req, res) => {
+  try {
+    let proxies = [];
+    try {
+      const content = await fs.readFile(PROXY_DB_PATH, "utf8");
+      proxies = content.split("\n").filter((line) => line.trim() !== "");
+    } catch (error) {
+      console.error("Error reading proxy database:", error);
+    }
+
+    res.json({
+      success: true,
+      count: proxies.length,
+      proxies,
+    });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
