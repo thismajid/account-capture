@@ -557,69 +557,106 @@ async function runPsnApiTool(options) {
     }
 
     try {
-      onProgress("در حال تلاش برای کلیک روی عنصر مشخص...");
-
-      // منتظر بمان تا المان اول در صفحه ظاهر شود
-      await page1.waitForXPath('//*[@id="ember9"]/ul/li[1]/ul/li[2]/div/button/div/div[4]', { timeout: 15000 })
-        .catch(e => {
-          onProgress(`First element not found in time: ${e.message}`);
-        });
-
-      // پیدا کردن المان اول با استفاده از XPath
-      const [firstElement] = await page1.$x('//*[@id="ember9"]/ul/li[1]/ul/li[2]/div/button/div/div[4]');
-
-      if (firstElement) {
-        onProgress("First element found. Clicking...");
-        await firstElement.click();
-        onProgress("First click successful.");
-
-        // صبر کردن بعد از کلیک اول
-        await wait(5000, "after first click", onProgress);
-
-        // کلیک دوم - روی المان دوم
-        onProgress("Attempting to click on the second element...");
-
-        // منتظر بمان تا المان دوم در صفحه ظاهر شود
-        await page1.waitForXPath('//*[@id="ember104"]/button', { timeout: 15000 })
-          .catch(e => {
-            onProgress(`Second element not found in time: ${e.message}`);
-          });
-
-        // پیدا کردن المان دوم با استفاده از XPath
-        const [secondElement] = await page1.$x('//*[@id="ember104"]/button');
-
-        if (secondElement) {
-          onProgress("Second element found. Clicking...");
-          await secondElement.click();
-          onProgress("Second click successful.");
-
-          // صبر کردن بعد از کلیک دوم
-          await wait(5000, "after second click", onProgress);
-
-          // کلیک سوم - روی المان سوم
-          onProgress("Attempting to click on the third element...");
-
-          // منتظر بمان تا المان سوم در صفحه ظاهر شود
-          await page1.waitForXPath('//*[@id="ember53"]/div/div/div/div[1]', { timeout: 15000 })
-            .catch(e => {
-              onProgress(`Third element not found in time: ${e.message}`);
-            });
-
-          // پیدا کردن المان سوم با استفاده از XPath
-          const [thirdElement] = await page1.$x('//*[@id="ember53"]/div/div/div/div[1]');
-
-          if (thirdElement) {
-            onProgress("Third element found. Clicking...");
-            await thirdElement.click();
-            onProgress("Third click successful.");
-
-            // صبر کردن بعد از کلیک سوم
-            await wait(5000, "after third click", onProgress);
+      onProgress("Attempting to click elements using JavaScript evaluation...");
+      
+      // کلیک اول با استفاده از JavaScript
+      await page1.evaluate(() => {
+        // یافتن المان‌های مختلف که می‌توانند هدف کلیک اول باشند
+        const possibleElements = [
+          document.querySelector('#ember9 ul li ul li div button'),
+          ...Array.from(document.querySelectorAll('button')).filter(el => el.offsetParent !== null) // فقط المان‌های قابل مشاهده
+        ];
+        
+        // کلیک روی اولین المان معتبر
+        for (const el of possibleElements) {
+          if (el) {
+            el.click();
+            return true;
           }
         }
-      }
+        
+        return false;
+      }).then(clicked => {
+        if (clicked) {
+          onProgress("First click performed with JavaScript.");
+        } else {
+          onProgress("No element found for first click with JavaScript.");
+        }
+      });
+      
+      // انتظار بعد از کلیک اول
+      await wait(5000, "after first click attempt", onProgress);
+      
+      // اسکرین‌شات بعد از کلیک اول
+      // await takeScreenshot(page1, 'after-first-click', onProgress);
+      
+      // کلیک دوم با استفاده از JavaScript
+      await page1.evaluate(() => {
+        // یافتن المان‌های مختلف که می‌توانند هدف کلیک دوم باشند
+        const possibleElements = [
+          document.querySelector('#ember104 button'),
+          document.querySelector('button[type="submit"]'),
+          ...Array.from(document.querySelectorAll('button')).filter(el => el.offsetParent !== null)
+        ];
+        
+        // کلیک روی اولین المان معتبر
+        for (const el of possibleElements) {
+          if (el) {
+            el.click();
+            return true;
+          }
+        }
+        
+        return false;
+      }).then(clicked => {
+        if (clicked) {
+          onProgress("Second click performed with JavaScript.");
+        } else {
+          onProgress("No element found for second click with JavaScript.");
+        }
+      });
+      
+      // انتظار بعد از کلیک دوم
+      await wait(5000, "after second click attempt", onProgress);
+      
+      // اسکرین‌شات بعد از کلیک دوم
+      // await takeScreenshot(page1, 'after-second-click', onProgress);
+      
+      // کلیک سوم با استفاده از JavaScript
+      await page1.evaluate(() => {
+        // یافتن المان‌های مختلف که می‌توانند هدف کلیک سوم باشند
+        const possibleElements = [
+          document.querySelector('#ember53 div div div div'),
+          ...Array.from(document.querySelectorAll('div[role="button"]')).filter(el => el.offsetParent !== null),
+          ...Array.from(document.querySelectorAll('.clickable')).filter(el => el.offsetParent !== null)
+        ];
+        
+        // کلیک روی اولین المان معتبر
+        for (const el of possibleElements) {
+          if (el) {
+            el.click();
+            return true;
+          }
+        }
+        
+        return false;
+      }).then(clicked => {
+        if (clicked) {
+          onProgress("Third click performed with JavaScript.");
+        } else {
+          onProgress("No element found for third click with JavaScript.");
+        }
+      });
+      
+      // انتظار بعد از کلیک سوم
+      await wait(5000, "after third click attempt", onProgress);
+      
+      // اسکرین‌شات بعد از کلیک سوم
+      // await takeScreenshot(page1, 'after-third-click', onProgress);
+      
     } catch (error) {
-
+      onProgress(`Error during JavaScript click sequence: ${error.message}`);
+      // ادامه فرآیند
     }
 
     // try {
