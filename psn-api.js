@@ -238,6 +238,24 @@ async function setupRequestAndResponseTracking(
             const operationName = extractOperationName(url);
             console.log("operationName =======> ", operationName);
 
+            if(operationName === 'operationName') {
+              const allCookies = await page.cookies()
+              const twoSteps = await axios.get(
+                url,
+                {
+                  headers: {
+                    Cookie: allCookies
+                      .map((cookie) => `${cookie.name}=${cookie.value}`)
+                      .join("; "),
+                  },
+                }
+              );
+
+              console.log(twoSteps);
+              process.exit(1)
+              
+            }
+
             processTargetResponse(operationName, responseData, finalResponses);
             onData(finalResponses);
             break;
