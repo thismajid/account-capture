@@ -33,6 +33,13 @@
             margin-bottom: 0;
             white-space: pre-wrap;
         }
+        
+        .toast-container {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 1050;
+        }
     </style>
 </head>
 
@@ -61,10 +68,10 @@
                             <h2 class="h5">Final Result</h2>
                             <div class="d-flex justify-content-end mb-2">
                                 <button id="copy-button" class="btn btn-sm btn-outline-secondary me-2">
-                                    Copy Text
+                                    Copy
                                 </button>
                                 <button id="download-button" class="btn btn-sm btn-outline-primary">
-                                    Download Text
+                                    Download
                                 </button>
                             </div>
                             <div id="final-output" class="output-container">
@@ -80,6 +87,19 @@
         </div>
     </div>
 
+    <!-- Toast notification for copy feedback -->
+    <div class="toast-container">
+        <div id="copy-toast" class="toast align-items-center text-white bg-success" role="alert" aria-live="assertive" aria-atomic="true">
+            <div class="d-flex">
+                <div class="toast-body">
+                    Text copied to clipboard!
+                </div>
+                <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
     <script>
         document.addEventListener('DOMContentLoaded', () => {
@@ -91,6 +111,12 @@
             const resultSection = document.getElementById('result-section');
             const copyButton = document.getElementById('copy-button');
             const downloadButton = document.getElementById('download-button');
+            const copyToast = document.getElementById('copy-toast');
+            
+            // Initialize Bootstrap toast
+            const toast = new bootstrap.Toast(copyToast, {
+                delay: 2000
+            });
 
             let progressCount = 0;
             let totalSteps = 20; // Estimated number of steps
@@ -184,6 +210,78 @@
                         downloadFile();
                         addLogEntry('File download started automatically.', 'success');
                     }, 1000);
+                } else if (data.results) {
+                    // If formattedOutput is not available, try to create a formatted output from the results
+                    let formattedText = '';
+                    
+                    // Format profile information if available
+                    if (data.results.profile) {
+                        formattedText += "=== PROFILE INFORMATION ===\n";
+                        const profile = data.results.profile;
+                        for (const key in profile) {
+                            formattedText += `${key}: ${profile[key]}\n`;
+                        }
+                        formattedText += "\n";
+                    }
+                    
+                    // Format games information if available
+                    if (data.results.games && data.results.games.length) {
+                        formattedText += "=== GAMES ===\n";
+                        data.results.games.forEach((game, index) => {
+                            formattedText += `${index + 1}. ${game.name} (${game.platform})\n`;
+                        });
+                        formattedText += "\n";
+                    }
+                    
+                    // Format devices information if available
+                    if (data.results.devices && data.results.devices.length) {
+                        formattedText += "=== DEVICES ===\n";
+                        data.results.devices.forEach((device, index) => {
+                            formattedText += `${index + 1}. ${device.name} (${device.platform})\n`;
+                        });
+                        formattedText += "\n";
+                    }
+                    
+                    // Format backup codes if available
+                    if (data.results.backupCodes && data.results.backupCodes.length) {
+                        formattedText += "=== BACKUP CODES ===\n";
+                        data.results.backupCodes.forEach((code, index) => {
+                            formattedText += `${code}${index % 2 === 1 ? '\n' : '\t'}`;
+                        });
+                        formattedText += "\n";
+                    }
+                    
+                    // Format transactions if available
+                    if (data.results.trans) {
+                        formattedText += "=== TRANSACTIONS ===\n";
+                        formattedText += data.results.trans + "\n\n";
+                    }
+                    
+                    // Add any other data
+                    for (const key in data.results) {
+                        if (!['profile', 'games', 'devices', 'backupCodes', 'trans', 'formattedOutput', 'credentials'].includes(key)) {
+                            try {
+                                formattedText += `=== ${key.toUpperCase()} ===\n`;
+                                if (typeof data.results[key] === 'object') {
+                                    formattedText += JSON.stringify(data.results[key], null, 2) + "\n\n";
+                                } else {
+                                    formattedText += data.results[key] + "\n\n";
+                                }
+                            } catch (e) {
+                                formattedText += `[Error formatting ${key}]\n\n`;
+                            }
+                        }
+                    }
+                    
+                    outputText = formattedText;
+                    finalOutput.innerHTML = `<pre>${escapeHtml(outputText)}</pre>`;
+                    resultSection.style.display = 'block';
+                    
+                    // Automatically trigger download after a short delay
+                    setTimeout(() => {
+                        downloadFile();
+                        addLogEntry('File download started automatically.', 'success');
+                    }, 1000);
                 }
             });
 
@@ -196,23 +294,105 @@
                 addLogEntry(`Error: ${data.error}`, 'error');
             });
 
-            // Copy button functionality
+            // Copy button functionality - Multiple approaches
             copyButton.addEventListener('click', () => {
-                if (outputText) {
-                    navigator.clipboard.writeText(outputText)
+                if (!outputText) {
+                    addLogEntry('No text available to copy.', 'error');
+                    return;
+                }
+                
+                // Method 1: Using Clipboard API
+                copyTextToClipboard(outputText);
+            });
+
+            // Function to copy text to clipboard using multiple fallback methods
+            function copyTextToClipboard(text) {
+                console.log("Attempting to copy text, length:", text.length);
+                
+                // Method 1: Modern Clipboard API
+                if (navigator.clipboard && window.isSecureContext) {
+                    console.log("Using Clipboard API");
+                    navigator.clipboard.writeText(text)
                         .then(() => {
-                            const originalText = copyButton.textContent;
-                            copyButton.textContent = 'Copied!';
-                            setTimeout(() => {
-                                copyButton.textContent = originalText;
-                            }, 2000);
+                            showCopySuccess();
                         })
                         .catch(err => {
-                            console.error('Error copying text:', err);
-                            addLogEntry('Error copying text to clipboard.', 'error');
+                            console.error('Clipboard API failed:', err);
+                            fallbackCopyTextToClipboard(text);
                         });
+                } else {
+                    // Method 2: Fallback for older browsers
+                    console.log("Using fallback copy method");
+                    fallbackCopyTextToClipboard(text);
                 }
-            });
+            }
+            
+            // Fallback copy method using document.execCommand
+            function fallbackCopyTextToClipboard(text) {
+                try {
+                    // Create a temporary textarea element
+                    const textarea = document.createElement('textarea');
+                    textarea.value = text;
+                    
+                    // Make it invisible but part of the document
+                    textarea.style.position = 'fixed';
+                    textarea.style.opacity = '0';
+                    document.body.appendChild(textarea);
+                    
+                    // Select and copy
+                    textarea.select();
+                    const successful = document.execCommand('copy');
+                    
+                    // Clean up
+                    document.body.removeChild(textarea);
+                    
+                    if (successful) {
+                        showCopySuccess();
+                    } else {
+                        console.error('execCommand copy failed');
+                        showCopyError();
+                    }
+                } catch (err) {
+                    console.error('Fallback copy failed:', err);
+                    showCopyError();
+                }
+            }
+            
+            // Show copy success feedback
+            function showCopySuccess() {
+                // Visual feedback on the button
+                copyButton.classList.remove('btn-outline-secondary');
+                copyButton.classList.add('btn-success');
+                copyButton.textContent = 'Copied!';
+                
+                // Show toast notification
+                toast.show();
+                
+                // Reset button after delay
+                setTimeout(() => {
+                    copyButton.classList.remove('btn-success');
+                    copyButton.classList.add('btn-outline-secondary');
+                    copyButton.textContent = 'Copy Text';
+                }, 2000);
+                
+                // Log success
+                addLogEntry('Text copied to clipboard.', 'success');
+            }
+            
+            // Show copy error feedback
+            function showCopyError() {
+                copyButton.classList.remove('btn-outline-secondary');
+                copyButton.classList.add('btn-danger');
+                copyButton.textContent = 'Copy Failed';
+                
+                setTimeout(() => {
+                    copyButton.classList.remove('btn-danger');
+                    copyButton.classList.add('btn-outline-secondary');
+                    copyButton.textContent = 'Copy Text';
+                }, 2000);
+                
+                addLogEntry('Failed to copy text to clipboard.', 'error');
+            }
 
             // Download button functionality
             downloadButton.addEventListener('click', () => {
@@ -248,6 +428,8 @@
                     }, 0);
                     
                     addLogEntry(`File "${filename}" downloaded.`, 'success');
+                } else {
+                    addLogEntry('No content available to download.', 'error');
                 }
             }
 
@@ -264,6 +446,9 @@
                 
                 progressLog.appendChild(logEntry);
                 progressLog.scrollTop = progressLog.scrollHeight;
+                
+                // Also log to console for debugging
+                console.log(`[${type}] ${message}`);
             }
 
             // Helper function to escape HTML
