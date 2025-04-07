@@ -696,7 +696,7 @@ async function runPsnApiTool(options) {
       }
     );
 
-    finalResponses = { ...finalResponses, wallets: wallets.data };
+    finalResponses = { ...finalResponses, wallets: wallets?.data };
 
     const transactions = await axios.get(
       "https://web.np.playstation.com/api/graphql/v1/transact/transaction/history",
@@ -736,16 +736,16 @@ async function runPsnApiTool(options) {
         .filter(
           (t) =>
             t.additionalInfo?.orderItems?.[0]?.totalPrice &&
-            Math.abs(t.additionalInfo.orderItems[0].totalPrice.value) > 0
+            Math.abs(t.additionalInfo?.orderItems[0]?.totalPrice?.value) > 0
         )
         .map((t) => {
-          const fullSkuId = t.additionalInfo.orderItems[0].skuId;
+          const fullSkuId = t.additionalInfo?.orderItem?.length > 0 ? t.additionalInfo?.orderItems[0]?.skuId : null;
           const formattedSkuId = fullSkuId.match(/([A-Z0-9]+-[A-Z0-9]+_[0-9]+)/)[0];
-          return `${t.additionalInfo.orderItems[0].productName} [${t.additionalInfo.orderItems[0].totalPrice.formattedValue}] | [ ${formattedSkuId} ] | [ ${new Date(
-            t.transactionDetail.transactionDate
+          return `${t.additionalInfo?.orderItems[0]?.productName} [${t.additionalInfo?.orderItems[0]?.totalPrice?.formattedValue}] | [ ${formattedSkuId} ] | [ ${new Date(
+            t.transactionDetail?.transactionDate
           ).getMonth() + 1}/${new Date(
-            t.transactionDetail.transactionDate
-          ).getDate()}/${new Date(t.transactionDetail.transactionDate).getFullYear()} ]`;
+            t.transactionDetail?.transactionDate
+          ).getDate()}/${new Date(t.transactionDetail?.transactionDate).getFullYear()} ]`;
         })
         .join("\n"),
     };
@@ -853,7 +853,7 @@ ${finalResponses.trans || "No games found"}
 function generatePaymentMethodsText(response) {
   let paymentMethodsText = [];
 
-  if (response.creditCards) {
+  if (response.creditCards && response.creditCards.length > 0) {
     response.creditCards.forEach((card) => {
       if (card.common.isPaymentMethodAvailable && !card.common.banned) {
         let cardInfo = `[${card.common.paymentMethodId} - ${card.expirationYear}/${card.expirationMonth}]`;
