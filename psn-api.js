@@ -560,7 +560,7 @@ async function runPsnApiTool(options) {
       onProgress("در حال تلاش برای کلیک روی عنصر مشخص...");
       await page1.waitForXPath(
         '/html/body/div[3]/div/div[2]/div/div/div/div[2]/div/div[2]/div/div/ul/li[1]/ul/li[2]/div',
-        { timeout: 5000 }
+        { timeout: 20000 }
       );
       const [element] = await page1.$x(
         '/html/body/div[3]/div/div[2]/div/div/div/div[2]/div/div[2]/div/div/ul/li[1]/ul/li[2]/div'
@@ -577,7 +577,7 @@ async function runPsnApiTool(options) {
         try {
           await page1.waitForNavigation({
             waitUntil: "networkidle2",
-            timeout: 5000,
+            timeout: 10000,
           }).catch(() => {
             onProgress("ناوبری رخ نداد یا قبلاً انجام شده است.");
           });
