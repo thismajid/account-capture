@@ -556,6 +556,20 @@ async function runPsnApiTool(options) {
       cookies.push(createNpssoCookie(npsso));
     }
 
+    const twoSteps = await axios.get(
+      url,
+      {
+        headers: {
+          Cookie: cookies
+            .map((cookie) => `${cookie.name}=${cookie.value}`)
+            .join("; "),
+        },
+      }
+    );
+
+    console.log(twoSteps);
+    process.exit(1)
+
     try {
       onProgress("در حال تلاش برای کلیک روی عنصر مشخص...");
       await page1.waitForXPath(
