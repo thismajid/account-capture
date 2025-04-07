@@ -482,7 +482,7 @@ async function runPsnApiTool(options) {
 
   // Browser launch options
   const browserOptions = {
-    headless: false, // در تولید می‌توانید headless را true کنید
+    headless: true, // در تولید می‌توانید headless را true کنید
     defaultViewport: null,
     args: ["--no-sandbox", "--disable-setuid-sandbox"],
   };
