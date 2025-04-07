@@ -500,9 +500,19 @@ async function runPsnApiTool(options) {
 
   // Browser launch options
   const browserOptions = {
-    headless: true, // در تولید می‌توانید headless را true کنید
-    defaultViewport: null,
-    args: ["--no-sandbox", "--disable-setuid-sandbox"],
+    headless: 'new', // در تولید می‌توانید headless را true کنید
+    defaultViewport: { width: 1920, height: 1080 },
+    args: [
+      "--no-sandbox",
+      "--disable-setuid-sandbox",
+      "--window-size=1920,1080",
+      "--disable-web-security",
+      "--disable-features=IsolateOrigins,site-per-process",
+      "--disable-site-isolation-trials",
+      "--disable-dev-shm-usage",
+      "--disable-accelerated-2d-canvas",
+      "--disable-gpu"
+    ],
   };
 
   // اضافه کردن پروکسی به args در صورت تنظیم شدن
@@ -556,107 +566,230 @@ async function runPsnApiTool(options) {
       cookies.push(createNpssoCookie(npsso));
     }
 
+    // Wait for page to be completely loaded
+    onProgress("Waiting for page to be fully loaded...");
+    await page1.waitForFunction(() => {
+      return document.readyState === 'complete';
+    }, { timeout: 30000 });
+
+    // Wait additional time to ensure JavaScript execution
+    await page1.waitForTimeout(5000);
+    onProgress("Page fully loaded.");
+
+    // Take a screenshot to debug
+    const screenshotDir = path.join(__dirname, 'screenshots');
+    await fs.mkdir(screenshotDir, { recursive: true }).catch(() => { });
+    await page1.screenshot({
+      path: path.join(screenshotDir, `page-loaded-${Date.now()}.png`),
+      fullPage: true
+    });
+    onProgress("Screenshot taken after page load.");
+
+    // کلیک روی المان اول با روش‌های مختلف
     try {
-      onProgress("Attempting to click elements using JavaScript evaluation...");
-      
-      // کلیک اول با استفاده از JavaScript
-      await page1.evaluate(() => {
-        // یافتن المان‌های مختلف که می‌توانند هدف کلیک اول باشند
-        const possibleElements = [
-          document.querySelector('#ember9 ul li ul li div button'),
-          ...Array.from(document.querySelectorAll('button')).filter(el => el.offsetParent !== null) // فقط المان‌های قابل مشاهده
-        ];
-        
-        // کلیک روی اولین المان معتبر
-        for (const el of possibleElements) {
-          if (el) {
-            el.click();
-            return true;
+      onProgress("Attempting to click on the first element...");
+
+      // روش 1: استفاده از JavaScript برای پیدا کردن و کلیک روی المان
+      const firstClickResult = await page1.evaluate(() => {
+        // تلاش با XPath اصلی
+        const xpathResult = document.evaluate(
+          '//*[@id="ember9"]/ul/li[1]/ul/li[2]/div/button/div/div[4]',
+          document,
+          null,
+          XPathResult.FIRST_ORDERED_NODE_TYPE,
+          null
+        ).singleNodeValue;
+
+        if (xpathResult) {
+          xpathResult.click();
+          return { success: true, method: 'xpath' };
+        }
+
+        // تلاش با سلکتور CSS
+        const cssSelector = document.querySelector('#ember9 ul li ul li div button');
+        if (cssSelector) {
+          cssSelector.click();
+          return { success: true, method: 'css' };
+        }
+
+        // تلاش با یافتن همه دکمه‌ها
+        const allButtons = Array.from(document.querySelectorAll('button'));
+        const visibleButton = allButtons.find(btn => {
+          const rect = btn.getBoundingClientRect();
+          return rect.width > 0 && rect.height > 0 &&
+            window.getComputedStyle(btn).display !== 'none';
+        });
+
+        if (visibleButton) {
+          visibleButton.click();
+          return { success: true, method: 'visible-button' };
+        }
+
+        return { success: false };
+      });
+
+      if (firstClickResult.success) {
+        onProgress(`First click successful using ${firstClickResult.method}.`);
+      } else {
+        onProgress("Could not click first element with JavaScript. Trying Puppeteer methods...");
+
+        // تلاش با روش‌های پاپیتر
+        try {
+          const [firstElement] = await page1.$x('//*[@id="ember9"]/ul/li[1]/ul/li[2]/div/button/div/div[4]');
+          if (firstElement) {
+            await firstElement.click();
+            onProgress("First click successful with Puppeteer XPath.");
+          } else {
+            throw new Error("Element not found");
+          }
+        } catch (innerError) {
+          onProgress(`XPath method failed: ${innerError.message}. Trying CSS selector...`);
+
+          try {
+            await page1.click('#ember9 ul li ul li div button');
+            onProgress("First click successful with CSS selector.");
+          } catch (cssError) {
+            onProgress(`CSS method failed too: ${cssError.message}`);
           }
         }
-        
-        return false;
-      }).then(clicked => {
-        if (clicked) {
-          onProgress("First click performed with JavaScript.");
-        } else {
-          onProgress("No element found for first click with JavaScript.");
-        }
+      }
+
+      // Wait after first click
+      await page1.waitForTimeout(5000);
+      onProgress("Waited 5 seconds after first click.");
+
+      // Take screenshot after first click
+      await page1.screenshot({
+        path: path.join(screenshotDir, `after-first-click-${Date.now()}.png`),
+        fullPage: true
       });
-      
-      // انتظار بعد از کلیک اول
-      await wait(5000, "after first click attempt", onProgress);
-      
-      // اسکرین‌شات بعد از کلیک اول
-      // await takeScreenshot(page1, 'after-first-click', onProgress);
-      
-      // کلیک دوم با استفاده از JavaScript
-      await page1.evaluate(() => {
-        // یافتن المان‌های مختلف که می‌توانند هدف کلیک دوم باشند
-        const possibleElements = [
-          document.querySelector('#ember104 button'),
-          document.querySelector('button[type="submit"]'),
-          ...Array.from(document.querySelectorAll('button')).filter(el => el.offsetParent !== null)
-        ];
-        
-        // کلیک روی اولین المان معتبر
-        for (const el of possibleElements) {
-          if (el) {
-            el.click();
-            return true;
-          }
+      onProgress("Screenshot taken after first click.");
+
+      // کلیک روی المان دوم
+      onProgress("Attempting to click on the second element...");
+
+      // انتظار برای تغییر در DOM بعد از کلیک اول
+      await page1.waitForTimeout(2000);
+
+      const secondClickResult = await page1.evaluate(() => {
+        // تلاش با XPath اصلی
+        const xpathResult = document.evaluate(
+          '//*[@id="ember104"]/button',
+          document,
+          null,
+          XPathResult.FIRST_ORDERED_NODE_TYPE,
+          null
+        ).singleNodeValue;
+
+        if (xpathResult) {
+          xpathResult.click();
+          return { success: true, method: 'xpath' };
         }
-        
-        return false;
-      }).then(clicked => {
-        if (clicked) {
-          onProgress("Second click performed with JavaScript.");
-        } else {
-          onProgress("No element found for second click with JavaScript.");
+
+        // تلاش با سلکتور عمومی‌تر
+        const submitButton = document.querySelector('button[type="submit"]');
+        if (submitButton) {
+          submitButton.click();
+          return { success: true, method: 'submit-button' };
         }
+
+        // تلاش با یافتن دکمه‌های قابل مشاهده
+        const allButtons = Array.from(document.querySelectorAll('button'));
+        const visibleButton = allButtons.find(btn => {
+          const rect = btn.getBoundingClientRect();
+          return rect.width > 0 && rect.height > 0 &&
+            window.getComputedStyle(btn).display !== 'none';
+        });
+
+        if (visibleButton) {
+          visibleButton.click();
+          return { success: true, method: 'visible-button' };
+        }
+
+        return { success: false };
       });
-      
-      // انتظار بعد از کلیک دوم
-      await wait(5000, "after second click attempt", onProgress);
-      
-      // اسکرین‌شات بعد از کلیک دوم
-      // await takeScreenshot(page1, 'after-second-click', onProgress);
-      
-      // کلیک سوم با استفاده از JavaScript
-      await page1.evaluate(() => {
-        // یافتن المان‌های مختلف که می‌توانند هدف کلیک سوم باشند
-        const possibleElements = [
-          document.querySelector('#ember53 div div div div'),
-          ...Array.from(document.querySelectorAll('div[role="button"]')).filter(el => el.offsetParent !== null),
-          ...Array.from(document.querySelectorAll('.clickable')).filter(el => el.offsetParent !== null)
-        ];
-        
-        // کلیک روی اولین المان معتبر
-        for (const el of possibleElements) {
-          if (el) {
-            el.click();
-            return true;
-          }
-        }
-        
-        return false;
-      }).then(clicked => {
-        if (clicked) {
-          onProgress("Third click performed with JavaScript.");
-        } else {
-          onProgress("No element found for third click with JavaScript.");
-        }
+
+      if (secondClickResult.success) {
+        onProgress(`Second click successful using ${secondClickResult.method}.`);
+      } else {
+        onProgress("Could not click second element with JavaScript.");
+      }
+
+      // Wait after second click
+      await page1.waitForTimeout(5000);
+      onProgress("Waited 5 seconds after second click.");
+
+      // Take screenshot after second click
+      await page1.screenshot({
+        path: path.join(screenshotDir, `after-second-click-${Date.now()}.png`),
+        fullPage: true
       });
-      
-      // انتظار بعد از کلیک سوم
-      await wait(5000, "after third click attempt", onProgress);
-      
-      // اسکرین‌شات بعد از کلیک سوم
-      // await takeScreenshot(page1, 'after-third-click', onProgress);
-      
+      onProgress("Screenshot taken after second click.");
+
+      // کلیک روی المان سوم
+      onProgress("Attempting to click on the third element...");
+
+      // انتظار برای تغییر در DOM بعد از کلیک دوم
+      await page1.waitForTimeout(2000);
+
+      const thirdClickResult = await page1.evaluate(() => {
+        // تلاش با XPath اصلی
+        const xpathResult = document.evaluate(
+          '//*[@id="ember53"]/div/div/div/div[1]',
+          document,
+          null,
+          XPathResult.FIRST_ORDERED_NODE_TYPE,
+          null
+        ).singleNodeValue;
+
+        if (xpathResult) {
+          xpathResult.click();
+          return { success: true, method: 'xpath' };
+        }
+
+        // تلاش با سلکتورهای عمومی‌تر
+        const buttonDivs = Array.from(document.querySelectorAll('div[role="button"]'));
+        if (buttonDivs.length > 0) {
+          buttonDivs[0].click();
+          return { success: true, method: 'role-button' };
+        }
+
+        // تلاش با یافتن المان‌های قابل کلیک
+        const clickables = Array.from(document.querySelectorAll('.clickable, [tabindex="0"]'));
+        const visibleClickable = clickables.find(el => {
+          const rect = el.getBoundingClientRect();
+          return rect.width > 0 && rect.height > 0 &&
+            window.getComputedStyle(el).display !== 'none';
+        });
+
+        if (visibleClickable) {
+          visibleClickable.click();
+          return { success: true, method: 'clickable' };
+        }
+
+        return { success: false };
+      });
+
+      if (thirdClickResult.success) {
+        onProgress(`Third click successful using ${thirdClickResult.method}.`);
+      } else {
+        onProgress("Could not click third element with JavaScript.");
+      }
+
+      // Wait after third click
+      await page1.waitForTimeout(5000);
+      onProgress("Waited 5 seconds after third click.");
+
+      // Take screenshot after third click
+      await page1.screenshot({
+        path: path.join(screenshotDir, `after-third-click-${Date.now()}.png`),
+        fullPage: true
+      });
+      onProgress("Screenshot taken after third click.");
+
     } catch (error) {
-      onProgress(`Error during JavaScript click sequence: ${error.message}`);
-      // ادامه فرآیند
+      onProgress(`Error during click sequence: ${error.message}. Continuing with the process.`);
+      // ادامه فرآیند حتی در صورت خطا
     }
 
     // try {
