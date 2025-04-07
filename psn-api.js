@@ -326,7 +326,7 @@ function processTargetResponse(operationName, responseData, finalResponses) {
 
     case "addresses":
       if (responseData.length > 0) {
-        const mainAddress = responseData.find((item) => item.isMain);
+        const mainAddress = responseData?.find((item) => item.isMain);
         finalResponses.address = { ...mainAddress };
       }
   }
@@ -482,7 +482,7 @@ async function runPsnApiTool(options) {
 
   // Browser launch options
   const browserOptions = {
-    headless: true, // در تولید می‌توانید headless را true کنید
+    headless: false, // در تولید می‌توانید headless را true کنید
     defaultViewport: null,
     args: ["--no-sandbox", "--disable-setuid-sandbox"],
   };
@@ -652,8 +652,6 @@ async function runPsnApiTool(options) {
       }
     );
 
-    console.log(" ========> ", creditCards);
-
     finalResponses = {
       ...finalResponses,
       creditCards: generatePaymentMethodsText(creditCards.data),
@@ -676,7 +674,7 @@ async function runPsnApiTool(options) {
       "https://web.np.playstation.com/api/graphql/v1/transact/transaction/history",
       {
         params: {
-          limit: 25,
+          limit: 180,
           startDate: "2010-01-01T00:00:00.000-0400",
           endDate: "2025-04-06T23:59:59.999-0400",
           includePurged: false,
@@ -700,8 +698,6 @@ async function runPsnApiTool(options) {
         },
       }
     );
-
-    console.log(transactions.data.transactions);
 
     const plusTitle = finalResponses.profile?.isPsPlusMember ? findAndProcessPlayStationPlusItem(transactions.data.transactions) : null
 
@@ -752,18 +748,12 @@ async function runPsnApiTool(options) {
           newDevices: JSON.parse(result),
         };
 
-        console.log(finalResponses);
-
         const hasSixMonthsPassed =
           new Date(
             finalResponses.newDevices.reduce((latest, current) => 
               new Date(current.activationDate) > new Date(latest.activationDate) ? current : latest
             ).activationDate
           ) < new Date(new Date().setMonth(new Date().getMonth() - 6));
-
-        console.log("hasSixMonthsPassed  ", hasSixMonthsPassed);
-
-         
 
         // ساخت خروجی نهایی به صورت متن
         const output = `
@@ -776,7 +766,7 @@ async function runPsnApiTool(options) {
             : "N/A"
         } ]
 --------------------------- « Details » --------------------------
-- Country | City | Postal Code : ${finalResponses.address.country} - ${finalResponses.address.city} - ${finalResponses.address.postalCode}
+- Country | City | Postal Code : ${finalResponses.address?.country ||  "N/A"} - ${finalResponses.address?.city ||  "N/A"} - ${finalResponses.address?.postalCode || "N/A"}
 - Balance : ${finalResponses.wallets?.debtBalance}.${finalResponses.wallets?.currentAmount} ${finalResponses.wallets?.currencyCode || ""}
 - PSN ID : ${finalResponses.profile?.onlineId || "N/A"}
 - Payments : ${finalResponses.creditCards || "Not Found"} 
