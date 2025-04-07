@@ -238,7 +238,7 @@ async function setupRequestAndResponseTracking(
             const operationName = extractOperationName(url);
             console.log("operationName =======> ", operationName);
 
-            if(operationName === 'operationName') {
+            if (operationName === 'operationName') {
               const allCookies = await page.cookies()
               const twoSteps = await axios.get(
                 url,
@@ -253,7 +253,7 @@ async function setupRequestAndResponseTracking(
 
               console.log(twoSteps);
               process.exit(1)
-              
+
             }
 
             processTargetResponse(operationName, responseData, finalResponses);
@@ -476,10 +476,10 @@ async function runPsnApiTool(options) {
     npsso,
     proxyFile, // مسیر فایل پروکسی (در صورت آپلود شدن)
     proxyData, // محتویات فایل پروکسی
-    onProgress = () => {},
-    onData = () => {},
-    onComplete = () => {},
-    onError = () => {},
+    onProgress = () => { },
+    onData = () => { },
+    onComplete = () => { },
+    onError = () => { },
   } = options;
 
   // Create a new object to store responses
@@ -556,72 +556,124 @@ async function runPsnApiTool(options) {
       cookies.push(createNpssoCookie(npsso));
     }
 
-    const twoSteps = await axios.get(
-      url,
-      {
-        headers: {
-          Cookie: cookies
-            .map((cookie) => `${cookie.name}=${cookie.value}`)
-            .join("; "),
-        },
-      }
-    );
-
-    console.log(twoSteps);
-    process.exit(1)
-
     try {
       onProgress("در حال تلاش برای کلیک روی عنصر مشخص...");
-      await page1.waitForXPath(
-        '/html/body/div[3]/div/div[2]/div/div/div/div[2]/div/div[2]/div/div/ul/li[1]/ul/li[2]/div',
-        { timeout: 20000 }
-      );
-      const [element] = await page1.$x(
-        '/html/body/div[3]/div/div[2]/div/div/div/div[2]/div/div[2]/div/div/ul/li[1]/ul/li[2]/div'
-      );
 
-      if (element) {
-        onProgress("عنصر یافت شد؛ کلیک...");
-        await element.click();
-        onProgress("کلیک موفقیت‌آمیز.");
+      // منتظر بمان تا المان اول در صفحه ظاهر شود
+      await page1.waitForXPath('//*[@id="ember9"]/ul/li[1]/ul/li[2]/div/button/div/div[4]', { timeout: 15000 })
+        .catch(e => {
+          onProgress(`First element not found in time: ${e.message}`);
+        });
 
-        await wait(3000, "پس از کلیک", onProgress);
+      // پیدا کردن المان اول با استفاده از XPath
+      const [firstElement] = await page1.$x('//*[@id="ember9"]/ul/li[1]/ul/li[2]/div/button/div/div[4]');
 
-        onProgress("در انتظار ناوبری پس از کلیک اول...");
-        try {
-          await page1.waitForNavigation({
-            waitUntil: "networkidle2",
-            timeout: 10000,
-          }).catch(() => {
-            onProgress("ناوبری رخ نداد یا قبلاً انجام شده است.");
+      if (firstElement) {
+        onProgress("First element found. Clicking...");
+        await firstElement.click();
+        onProgress("First click successful.");
+
+        // صبر کردن بعد از کلیک اول
+        await wait(5000, "after first click", onProgress);
+
+        // کلیک دوم - روی المان دوم
+        onProgress("Attempting to click on the second element...");
+
+        // منتظر بمان تا المان دوم در صفحه ظاهر شود
+        await page1.waitForXPath('//*[@id="ember104"]/button', { timeout: 15000 })
+          .catch(e => {
+            onProgress(`Second element not found in time: ${e.message}`);
           });
-          await wait(3000, "تا پایداری صفحه جدید", onProgress);
-          onProgress(
-            'در حال تلاش برای یافتن و کلیک روی عنصري با XPath مشخص: //*[@id="ember138"]/div/div/div/div[1]/div'
-          );
-          await page1.waitForXPath('//*[@id="ember138"]/div/div/div/div[1]/div', { timeout: 5000 }).catch(e => {
-            onProgress(`عنصر با XPath مشخص در زمان تعیین شده یافت نشد: ${e.message}`);
-          });
-          const [secondElement] = await page1.$x(
-            '/html/body/div[3]/div/div[2]/div/div/div/div[2]/div/div[3]/div/div/div/div/div/main/div/div/div[2]/div[1]/ul[3]/li[3]/button/div/div/div/div[1]/div'
-          );
-          if (secondElement) {
-            onProgress("عنصر دوم پیدا شد؛ کلیک...");
-            await secondElement.click();
-            onProgress("کلیک عنصر دوم موفقیت‌آمیز.");
-            await wait(3000, "پس از کلیک عنصر دوم", onProgress);
-          } else {
-            onProgress("عنصر دوم پیدا نشد؛ ادامه روند...");
+
+        // پیدا کردن المان دوم با استفاده از XPath
+        const [secondElement] = await page1.$x('//*[@id="ember104"]/button');
+
+        if (secondElement) {
+          onProgress("Second element found. Clicking...");
+          await secondElement.click();
+          onProgress("Second click successful.");
+
+          // صبر کردن بعد از کلیک دوم
+          await wait(5000, "after second click", onProgress);
+
+          // کلیک سوم - روی المان سوم
+          onProgress("Attempting to click on the third element...");
+
+          // منتظر بمان تا المان سوم در صفحه ظاهر شود
+          await page1.waitForXPath('//*[@id="ember53"]/div/div/div/div[1]', { timeout: 15000 })
+            .catch(e => {
+              onProgress(`Third element not found in time: ${e.message}`);
+            });
+
+          // پیدا کردن المان سوم با استفاده از XPath
+          const [thirdElement] = await page1.$x('//*[@id="ember53"]/div/div/div/div[1]');
+
+          if (thirdElement) {
+            onProgress("Third element found. Clicking...");
+            await thirdElement.click();
+            onProgress("Third click successful.");
+
+            // صبر کردن بعد از کلیک سوم
+            await wait(5000, "after third click", onProgress);
           }
-        } catch (error) {
-          onProgress(`خطا در کلیک دوم: ${error.message}`);
         }
-      } else {
-        onProgress("عنصر با XPath مشخص یافت نشد.");
       }
     } catch (error) {
-      onProgress(`خطا هنگام تلاش برای کلیک روی عنصر: ${error.message}`);
+
     }
+
+    // try {
+    //   onProgress("در حال تلاش برای کلیک روی عنصر مشخص...");
+    //   await page1.waitForXPath(
+    //     '//*[@id="ember9"]/ul/li[1]/ul/li[2]/div',
+    //     { timeout: 20000 }
+    //   );
+    //   const [element] = await page1.$x(
+    //     '//*[@id="ember9"]/ul/li[1]/ul/li[2]/div'
+    //   );
+
+    //   if (element) {
+    //     onProgress("عنصر یافت شد؛ کلیک...");
+    //     await element.click();
+    //     onProgress("کلیک موفقیت‌آمیز.");
+
+    //     await wait(3000, "پس از کلیک", onProgress);
+
+    //     onProgress("در انتظار ناوبری پس از کلیک اول...");
+    //     try {
+    //       await page1.waitForNavigation({
+    //         waitUntil: "networkidle2",
+    //         timeout: 10000,
+    //       }).catch(() => {
+    //         onProgress("ناوبری رخ نداد یا قبلاً انجام شده است.");
+    //       });
+    //       await wait(3000, "تا پایداری صفحه جدید", onProgress);
+    //       onProgress(
+    //         'در حال تلاش برای یافتن و کلیک روی عنصري با XPath مشخص: //*[@id="ember138"]/div/div/div/div[1]/div'
+    //       );
+    //       await page1.waitForXPath('//*[@id="ember138"]/div/div/div/div[1]/div', { timeout: 5000 }).catch(e => {
+    //         onProgress(`عنصر با XPath مشخص در زمان تعیین شده یافت نشد: ${e.message}`);
+    //       });
+    //       const [secondElement] = await page1.$x(
+    //         '/html/body/div[3]/div/div[2]/div/div/div/div[2]/div/div[3]/div/div/div/div/div/main/div/div/div[2]/div[1]/ul[3]/li[3]/button/div/div/div/div[1]/div'
+    //       );
+    //       if (secondElement) {
+    //         onProgress("عنصر دوم پیدا شد؛ کلیک...");
+    //         await secondElement.click();
+    //         onProgress("کلیک عنصر دوم موفقیت‌آمیز.");
+    //         await wait(3000, "پس از کلیک عنصر دوم", onProgress);
+    //       } else {
+    //         onProgress("عنصر دوم پیدا نشد؛ ادامه روند...");
+    //       }
+    //     } catch (error) {
+    //       onProgress(`خطا در کلیک دوم: ${error.message}`);
+    //     }
+    //   } else {
+    //     onProgress("عنصر با XPath مشخص یافت نشد.");
+    //   }
+    // } catch (error) {
+    //   onProgress(`خطا هنگام تلاش برای کلیک روی عنصر: ${error.message}`);
+    // }
 
     // Setup second page
     const page2 = await createConfiguredPage(
@@ -782,7 +834,7 @@ async function runPsnApiTool(options) {
 
         const hasSixMonthsPassed =
           new Date(
-            finalResponses.newDevices.reduce((latest, current) => 
+            finalResponses.newDevices.reduce((latest, current) =>
               new Date(current.activationDate) > new Date(latest.activationDate) ? current : latest
             ).activationDate
           ) < new Date(new Date().setMonth(new Date().getMonth() - 6));
@@ -792,22 +844,20 @@ async function runPsnApiTool(options) {
 ----------------------- « Account Info » -----------------------
 - Account : ${credentials}
 - Npsso : ${npsso}
-- Backup Codes :  [ ${
-          finalResponses.backupCodes
+- Backup Codes :  [ ${finalResponses.backupCodes
             ? finalResponses.backupCodes.join(" - ")
             : "N/A"
-        } ]
+          } ]
 --------------------------- « Details » --------------------------
-- Country | City | Postal Code : ${finalResponses.address?.country ||  "N/A"} - ${finalResponses.address?.city ||  "N/A"} - ${finalResponses.address?.postalCode || "N/A"}
+- Country | City | Postal Code : ${finalResponses.address?.country || "N/A"} - ${finalResponses.address?.city || "N/A"} - ${finalResponses.address?.postalCode || "N/A"}
 - Balance : ${finalResponses.wallets?.debtBalance}.${finalResponses.wallets?.currentAmount} ${finalResponses.wallets?.currencyCode || ""}
 - PSN ID : ${finalResponses.profile?.onlineId || "N/A"}
 - Payments : ${finalResponses.creditCards || "Not Found"} 
 - PS Plus : ${finalResponses.profile?.isPsPlusMember ? `Yes! - ${plusTitle}` : "No!"}
-- Devices : [ ${
-          finalResponses.newDevices
+- Devices : [ ${finalResponses.newDevices
             ? [...new Set(finalResponses.newDevices.map((d) => d.deviceType))].join(" - ")
             : "N/A"
-        } ]
+          } ]
 - Deactive : ${hasSixMonthsPassed === false ? "No!" : "Yes!"}
 - Transaction Numbers : ${finalResponses.transactionNumbers || "N/A"}
 --------------------------- « Games » ---------------------------
@@ -877,35 +927,35 @@ function findAndProcessPlayStationPlusItem(data) {
   if (!Array.isArray(data)) {
     return null;
   }
-  
+
   for (const invoice of data) {
     if (invoice.additionalInfo && Array.isArray(invoice.additionalInfo.orderItems)) {
       for (const orderItem of invoice.additionalInfo.orderItems) {
         if (orderItem.productName && orderItem.productName.includes("PlayStation Plus")) {
           // استخراج عنوان
           const title = orderItem.productName;
-          
+
           // استخراج عدد از عنوان (به عنوان ماه)
           const monthMatch = title.match(/\d+/);
           const months = monthMatch ? parseInt(monthMatch[0]) : 0;
-          
+
           // استخراج تاریخ تراکنش
           const transactionDate = new Date(invoice.transactionDetail.transactionDate);
-          
+
           // اضافه کردن ماه‌ها به تاریخ
           const resultDate = new Date(transactionDate);
           resultDate.setMonth(resultDate.getMonth() + months);
-          
+
           // فرمت کردن تاریخ به صورت YYYY-MM-DD
           const formattedDate = resultDate.toISOString().split('T')[0];
-          
+
           // ساخت خروجی نهایی
           return `${title} | ${formattedDate}`;
         }
       }
     }
   }
-  
+
   return null;
 }
 
