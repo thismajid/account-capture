@@ -522,7 +522,7 @@ async function runPsnApiTool(options) {
 
     // Wait for first page to fully load and cookies to be set
     await wait(
-      PAGE_CONFIGS.FIRST.waitTime,
+      10000,
       "تا بارگذاری صفحه اول کامل شود",
       onProgress
     );
@@ -542,7 +542,7 @@ async function runPsnApiTool(options) {
       onProgress("در حال تلاش برای کلیک روی عنصر مشخص...");
       await page1.waitForXPath(
         '/html/body/div[3]/div/div[2]/div/div/div/div[2]/div/div[2]/div/div/ul/li[1]/ul/li[2]/div',
-        { timeout: 10000 }
+        { timeout: 5000 }
       );
       const [element] = await page1.$x(
         '/html/body/div[3]/div/div[2]/div/div/div/div[2]/div/div[2]/div/div/ul/li[1]/ul/li[2]/div'
@@ -559,15 +559,15 @@ async function runPsnApiTool(options) {
         try {
           await page1.waitForNavigation({
             waitUntil: "networkidle2",
-            timeout: 10000,
+            timeout: 5000,
           }).catch(() => {
             onProgress("ناوبری رخ نداد یا قبلاً انجام شده است.");
           });
-          await wait(5000, "تا پایداری صفحه جدید", onProgress);
+          await wait(3000, "تا پایداری صفحه جدید", onProgress);
           onProgress(
             'در حال تلاش برای یافتن و کلیک روی عنصري با XPath مشخص: //*[@id="ember138"]/div/div/div/div[1]/div'
           );
-          await page1.waitForXPath('//*[@id="ember138"]/div/div/div/div[1]/div', { timeout: 15000 }).catch(e => {
+          await page1.waitForXPath('//*[@id="ember138"]/div/div/div/div[1]/div', { timeout: 5000 }).catch(e => {
             onProgress(`عنصر با XPath مشخص در زمان تعیین شده یافت نشد: ${e.message}`);
           });
           const [secondElement] = await page1.$x(
@@ -577,7 +577,7 @@ async function runPsnApiTool(options) {
             onProgress("عنصر دوم پیدا شد؛ کلیک...");
             await secondElement.click();
             onProgress("کلیک عنصر دوم موفقیت‌آمیز.");
-            await wait(5000, "پس از کلیک عنصر دوم", onProgress);
+            await wait(3000, "پس از کلیک عنصر دوم", onProgress);
           } else {
             onProgress("عنصر دوم پیدا نشد؛ ادامه روند...");
           }
@@ -612,7 +612,7 @@ async function runPsnApiTool(options) {
       onProgress
     );
 
-    await wait(PAGE_CONFIGS.SECOND.waitTime, "پیش از بارگذاری مجدد صفحه دوم", onProgress);
+    await wait(8000, "پیش از بارگذاری مجدد صفحه دوم", onProgress);
 
     await navigateToPage(
       page2,
@@ -621,7 +621,7 @@ async function runPsnApiTool(options) {
       onProgress
     );
 
-    await wait(PAGE_CONFIGS.SECOND.waitTime, "پس از Reload", onProgress);
+    await wait(8000, "پس از Reload", onProgress);
 
     await navigateToPage(
       page2,
@@ -630,7 +630,7 @@ async function runPsnApiTool(options) {
       onProgress
     );
 
-    await wait(15000, "برای پردازش صفحه نهایی", onProgress);
+    await wait(8000, "برای پردازش صفحه نهایی", onProgress);
 
     onProgress("دریافت کوکی‌های نهایی از تمامی صفحات...");
     const finalPage1Cookies = await page1.cookies();
