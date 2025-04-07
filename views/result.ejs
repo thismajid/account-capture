@@ -1,61 +1,79 @@
 <!DOCTYPE html>
-<html lang="fa" dir="rtl">
+<html lang="en" dir="ltr">
 
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>
-        <%= title %>
-    </title>
+    <title><%= title %></title>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
     <link rel="stylesheet" href="/css/style.css">
+    <style>
+        .log-container {
+            max-height: 200px;
+            overflow-y: auto;
+            background-color: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 0.25rem;
+            padding: 0.75rem;
+            font-family: monospace;
+            font-size: 0.875rem;
+        }
+
+        .output-container {
+            background-color: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 0.25rem;
+            padding: 0.75rem;
+            font-family: monospace;
+            white-space: pre-wrap;
+            word-break: break-word;
+        }
+
+        .output-container pre {
+            margin-bottom: 0;
+            white-space: pre-wrap;
+        }
+    </style>
 </head>
 
 <body>
-    <div class="container mt-5">
+    <div class="container mt-5 mb-5">
         <div class="row justify-content-center">
             <div class="col-md-10">
                 <div class="card shadow">
                     <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
-                        <h1 class="h4 mb-0">نتایج</h1>
-                        <span id="status-badge" class="badge bg-info">در حال پردازش</span>
+                        <h1 class="h4 mb-0">Processing Results</h1>
+                        <span id="status-badge" class="badge bg-info">Processing</span>
                     </div>
                     <div class="card-body">
                         <div class="mb-4">
-                            <h2 class="h5">پیشرفت</h2>
+                            <h2 class="h5">Operation Progress</h2>
                             <div class="progress mb-2">
                                 <div id="progress-bar" class="progress-bar progress-bar-striped progress-bar-animated"
                                     style="width: 0%"></div>
                             </div>
-                            <div id="progress-log" class="bg-light p-3 mt-2 border rounded"
-                                style="max-height: 200px; overflow-y: auto;">
-                                <div class="text-muted">در انتظار شروع پردازش...</div>
+                            <div id="progress-log" class="log-container mt-2">
+                                <div class="text-muted">Waiting to start processing...</div>
                             </div>
                         </div>
 
-                        <div class="mb-4">
-                            <h2 class="h5">اطلاعات حساب کاربری</h2>
-                            <div id="profile-data" class="bg-light p-3 border rounded">
-                                <div class="text-muted">در انتظار دریافت اطلاعات...</div>
+                        <div class="mb-4" id="result-section" style="display: none;">
+                            <h2 class="h5">Final Result</h2>
+                            <div class="d-flex justify-content-end mb-2">
+                                <button id="copy-button" class="btn btn-sm btn-outline-secondary me-2">
+                                    Copy Text
+                                </button>
+                                <button id="download-button" class="btn btn-sm btn-outline-primary">
+                                    Download Text
+                                </button>
                             </div>
-                        </div>
-
-                        <div class="mb-4">
-                            <h2 class="h5">بازی‌ها</h2>
-                            <div id="games-data" class="bg-light p-3 border rounded">
-                                <div class="text-muted">در انتظار دریافت اطلاعات...</div>
-                            </div>
-                        </div>
-
-                        <div class="mb-4">
-                            <h2 class="h5">دستگاه‌ها</h2>
-                            <div id="devices-data" class="bg-light p-3 border rounded">
-                                <div class="text-muted">در انتظار دریافت اطلاعات...</div>
+                            <div id="final-output" class="output-container">
+                                <div class="text-muted">Waiting for process to complete...</div>
                             </div>
                         </div>
                     </div>
                     <div class="card-footer">
-                        <a href="/" class="btn btn-secondary">بازگشت به صفحه اصلی</a>
+                        <a href="/" class="btn btn-secondary">Back to Home</a>
                     </div>
                 </div>
             </div>
@@ -69,20 +87,22 @@
             const statusBadge = document.getElementById('status-badge');
             const progressBar = document.getElementById('progress-bar');
             const progressLog = document.getElementById('progress-log');
-            const profileData = document.getElementById('profile-data');
-            const gamesData = document.getElementById('games-data');
-            const devicesData = document.getElementById('devices-data');
+            const finalOutput = document.getElementById('final-output');
+            const resultSection = document.getElementById('result-section');
+            const copyButton = document.getElementById('copy-button');
+            const downloadButton = document.getElementById('download-button');
 
             let progressCount = 0;
             let totalSteps = 20; // Estimated number of steps
+            let outputText = '';
+            let userCredentials = 'unknown-user';
 
             // Connect to Socket.IO
             const socket = io();
 
-            // اضافه کردن لاگ برای بررسی اتصال
             console.log('Connecting to Socket.IO...');
 
-            // منتظر اتصال Socket.IO شوید، سپس به اتاق بپیوندید
+            // Join the job room when connected
             socket.on('connect', () => {
                 console.log('Socket connected, ID:', socket.id);
 
@@ -97,24 +117,18 @@
                     .then(response => response.json())
                     .then(data => {
                         console.log('Joined room:', data);
-                        // اضافه کردن یک پیام به لاگ
-                        const logEntry = document.createElement('div');
-                        logEntry.textContent = 'اتصال به سرور برقرار شد.';
-                        progressLog.appendChild(logEntry);
+                        addLogEntry('Connected to server.');
                     })
                     .catch(err => {
                         console.error('Error joining room:', err);
+                        addLogEntry('Error connecting to server.', 'error');
                     });
             });
+
             // Handle progress updates
             socket.on('progress', (data) => {
                 const message = data.message;
-
-                // Add message to log
-                const logEntry = document.createElement('div');
-                logEntry.textContent = message;
-                progressLog.appendChild(logEntry);
-                progressLog.scrollTop = progressLog.scrollHeight;
+                addLogEntry(message);
 
                 // Update progress bar
                 progressCount++;
@@ -125,12 +139,15 @@
 
             // Handle data updates
             socket.on('data', (data) => {
-                updateDataDisplay(data.data);
+                // Just log that data was received
+                if (data.data) {
+                    addLogEntry('New data received.');
+                }
             });
 
             // Handle completion
             socket.on('complete', (data) => {
-                statusBadge.textContent = 'تکمیل شد';
+                statusBadge.textContent = 'Completed';
                 statusBadge.classList.remove('bg-info');
                 statusBadge.classList.add('bg-success');
 
@@ -138,101 +155,125 @@
                 progressBar.textContent = '100%';
                 progressBar.classList.remove('progress-bar-animated');
 
-                updateDataDisplay(data.results);
+                addLogEntry('Processing completed successfully.', 'success');
 
-                const logEntry = document.createElement('div');
-                logEntry.textContent = 'پردازش با موفقیت به پایان رسید.';
-                logEntry.classList.add('text-success', 'fw-bold');
-                progressLog.appendChild(logEntry);
+                // Display the final formatted output
+                if (data.results && data.results.formattedOutput) {
+                    outputText = data.results.formattedOutput;
+                    finalOutput.innerHTML = `<pre>${escapeHtml(outputText)}</pre>`;
+                    resultSection.style.display = 'block';
+                    
+                    // Extract credentials for filename if available
+                    if (data.results.credentials) {
+                        userCredentials = data.results.credentials.split(':')[0]; // Get email part
+                    } else {
+                        // Try to extract credentials from the output text
+                        const accountMatch = outputText.match(/Account\s*:\s*([^\n]+)/);
+                        if (accountMatch && accountMatch[1]) {
+                            const accountInfo = accountMatch[1].trim();
+                            if (accountInfo.includes(':')) {
+                                userCredentials = accountInfo.split(':')[0].trim();
+                            } else {
+                                userCredentials = accountInfo;
+                            }
+                        }
+                    }
+                    
+                    // Automatically trigger download after a short delay
+                    setTimeout(() => {
+                        downloadFile();
+                        addLogEntry('File download started automatically.', 'success');
+                    }, 1000);
+                }
             });
 
             // Handle errors
             socket.on('error', (data) => {
-                statusBadge.textContent = 'خطا';
+                statusBadge.textContent = 'Error';
                 statusBadge.classList.remove('bg-info');
                 statusBadge.classList.add('bg-danger');
 
-                const logEntry = document.createElement('div');
-                logEntry.textContent = `خطا: ${data.error}`;
-                logEntry.classList.add('text-danger', 'fw-bold');
-                progressLog.appendChild(logEntry);
+                addLogEntry(`Error: ${data.error}`, 'error');
             });
 
-            // Function to update data display
-            function updateDataDisplay(data) {
-                // Update profile data
-                if (data.profile) {
-                    profileData.innerHTML = '';
-                    const profileTable = document.createElement('table');
-                    profileTable.className = 'table table-sm';
-
-                    const profile = data.profile;
-                    for (const [key, value] of Object.entries(profile)) {
-                        const row = profileTable.insertRow();
-                        const keyCell = row.insertCell(0);
-                        const valueCell = row.insertCell(1);
-
-                        keyCell.textContent = key;
-                        keyCell.className = 'fw-bold';
-                        valueCell.textContent = value;
-                    }
-
-                    profileData.appendChild(profileTable);
+            // Copy button functionality
+            copyButton.addEventListener('click', () => {
+                if (outputText) {
+                    navigator.clipboard.writeText(outputText)
+                        .then(() => {
+                            const originalText = copyButton.textContent;
+                            copyButton.textContent = 'Copied!';
+                            setTimeout(() => {
+                                copyButton.textContent = originalText;
+                            }, 2000);
+                        })
+                        .catch(err => {
+                            console.error('Error copying text:', err);
+                            addLogEntry('Error copying text to clipboard.', 'error');
+                        });
                 }
+            });
 
-                // Update games data
-                if (data.games && data.games.length > 0) {
-                    gamesData.innerHTML = '';
-                    const gamesTable = document.createElement('table');
-                    gamesTable.className = 'table table-sm';
-
-                    // Add header
-                    const thead = gamesTable.createTHead();
-                    const headerRow = thead.insertRow();
-                    ['نام', 'پلتفرم', 'عضویت', 'قابل دانلود'].forEach(text => {
-                        const th = document.createElement('th');
-                        th.textContent = text;
-                        headerRow.appendChild(th);
-                    });
-
-                    // Add rows
-                    const tbody = gamesTable.createTBody();
-                    data.games.forEach(game => {
-                        const row = tbody.insertRow();
-                        row.insertCell(0).textContent = game.name;
-                        row.insertCell(1).textContent = game.platform;
-                        row.insertCell(2).textContent = game.membership;
-                        row.insertCell(3).textContent = game.isDownloadable ? 'بله' : 'خیر';
-                    });
-
-                    gamesData.appendChild(gamesTable);
+            // Download button functionality
+            downloadButton.addEventListener('click', () => {
+                downloadFile();
+            });
+            
+            // Function to download the file
+            function downloadFile() {
+                if (outputText) {
+                    // Create filename with format credentials-date.txt
+                    const date = new Date().toISOString().split('T')[0]; // Format: YYYY-MM-DD
+                    const filename = `${userCredentials}-${date}.txt`;
+                    
+                    // Create a Blob with the text content
+                    const blob = new Blob([outputText], { type: 'text/plain' });
+                    
+                    // Create a temporary URL for the Blob
+                    const url = URL.createObjectURL(blob);
+                    
+                    // Create a temporary anchor element for downloading
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = filename;
+                    
+                    // Trigger the download
+                    document.body.appendChild(a);
+                    a.click();
+                    
+                    // Clean up
+                    setTimeout(() => {
+                        document.body.removeChild(a);
+                        URL.revokeObjectURL(url);
+                    }, 0);
+                    
+                    addLogEntry(`File "${filename}" downloaded.`, 'success');
                 }
+            }
 
-                // Update devices data
-                if (data.devices && data.devices.length > 0) {
-                    devicesData.innerHTML = '';
-                    const devicesTable = document.createElement('table');
-                    devicesTable.className = 'table table-sm';
-
-                    // Add header
-                    const thead = devicesTable.createTHead();
-                    const headerRow = thead.insertRow();
-                    ['نام', 'پلتفرم'].forEach(text => {
-                        const th = document.createElement('th');
-                        th.textContent = text;
-                        headerRow.appendChild(th);
-                    });
-
-                    // Add rows
-                    const tbody = devicesTable.createTBody();
-                    data.devices.forEach(device => {
-                        const row = tbody.insertRow();
-                        row.insertCell(0).textContent = device.name;
-                        row.insertCell(1).textContent = device.platform;
-                    });
-
-                    devicesData.appendChild(devicesTable);
+            // Helper function to add log entries
+            function addLogEntry(message, type = 'info') {
+                const logEntry = document.createElement('div');
+                logEntry.textContent = message;
+                
+                if (type === 'error') {
+                    logEntry.classList.add('text-danger');
+                } else if (type === 'success') {
+                    logEntry.classList.add('text-success', 'fw-bold');
                 }
+                
+                progressLog.appendChild(logEntry);
+                progressLog.scrollTop = progressLog.scrollHeight;
+            }
+
+            // Helper function to escape HTML
+            function escapeHtml(unsafe) {
+                return unsafe
+                    .replace(/&/g, "&amp;")
+                    .replace(/</g, "&lt;")
+                    .replace(/>/g, "&gt;")
+                    .replace(/"/g, "&quot;")
+                    .replace(/'/g, "&#039;");
             }
         });
     </script>
