@@ -579,7 +579,6 @@ async function runPsnApiTool(options) {
 
   // Browser launch options
   const browserOptions = {
-    executablePath: "/home/majid/Documents/chrome-linux/chrome",
     headless: "new", // در تولید می‌توانید headless را true کنید
     defaultViewport: { width: 1920, height: 1080 },
     args: [
