@@ -740,12 +740,19 @@ async function runPsnApiTool(options) {
         )
         .map((t) => {
           const fullSkuId = t.additionalInfo.orderItems[0].skuId;
-          const formattedSkuId = fullSkuId.match(/([A-Z0-9]+-[A-Z0-9]+_[0-9]+)/)[0];
-          return `${t.additionalInfo.orderItems[0].productName} [${t.additionalInfo.orderItems[0].totalPrice.formattedValue}] | [ ${formattedSkuId} ] | [ ${new Date(
+          // استفاده از optional chaining برای جلوگیری از خطا
+          const match = fullSkuId.match(/([A-Z0-9]+-[A-Z0-9]+_[0-9]+)/);
+          const formattedSkuId = match ? match[0] : fullSkuId; // اگر مطابقتی پیدا نشد، از کل skuId استفاده کن
+
+          return `${t.additionalInfo.orderItems[0].productName} [${
+            t.additionalInfo.orderItems[0].totalPrice.formattedValue
+          }] | [ ${formattedSkuId} ] | [ ${
+            new Date(t.transactionDetail.transactionDate).getMonth() + 1
+          }/${new Date(
             t.transactionDetail.transactionDate
-          ).getMonth() + 1}/${new Date(
+          ).getDate()}/${new Date(
             t.transactionDetail.transactionDate
-          ).getDate()}/${new Date(t.transactionDetail.transactionDate).getFullYear()} ]`;
+          ).getFullYear()} ]`;
         })
         .join("\n"),
     };
