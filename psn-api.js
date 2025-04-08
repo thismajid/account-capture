@@ -784,11 +784,16 @@ async function runPsnApiTool(options) {
         };
 
         const hasSixMonthsPassed =
-          new Date(
-            finalResponses.newDevices.reduce((latest, current) => 
-              new Date(current.activationDate) > new Date(latest.activationDate) ? current : latest
-            ).activationDate
-          ) < new Date(new Date().setMonth(new Date().getMonth() - 6));
+          finalResponses.newDevices.length > 0
+            ? new Date(
+                finalResponses.newDevices.reduce((latest, current) =>
+                  new Date(current.activationDate) >
+                  new Date(latest.activationDate)
+                    ? current
+                    : latest
+                ).activationDate
+              ) < new Date(new Date().setMonth(new Date().getMonth() - 6))
+            : false;
 
         // ساخت خروجی نهایی به صورت متن
         const output = `
