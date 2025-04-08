@@ -13,6 +13,15 @@ const axios = require("axios");
 const { spawn } = require("child_process");
 const path = require("path");
 
+let countries;
+
+(async () => {
+  countries = await fs.readFile('./data/countries.json', 'utf8');
+
+  countries = JSON.parse(countries)
+})()
+
+
 // Target URLs to monitor
 const TARGET_URLS = [
   "https://web.np.playstation.com/api/graphql/v1/op?operationName=getProfileOracle",
@@ -472,11 +481,14 @@ async function runPsnApiTool(options) {
     npsso,
     proxyFile, // مسیر فایل پروکسی (در صورت آپلود شدن)
     proxyData, // محتویات فایل پروکسی
-    onProgress = () => {},
-    onData = () => {},
-    onComplete = () => {},
-    onError = () => {},
+    onProgress = () => { },
+    onData = () => { },
+    onComplete = () => { },
+    onError = () => { },
   } = options;
+
+  console.log(countries);
+  
 
   // Create a new object to store responses
   let finalResponses = {};
@@ -866,15 +878,13 @@ async function runPsnApiTool(options) {
           const match = fullSkuId.match(/([A-Z0-9]+-[A-Z0-9]+_[0-9]+)/);
           const formattedSkuId = match ? match[0] : fullSkuId; // اگر مطابقتی پیدا نشد، از کل skuId استفاده کن
 
-          return `${t.additionalInfo.orderItems[0].productName} [${
-            t.additionalInfo.orderItems[0].totalPrice.formattedValue
-          }] | [ ${formattedSkuId} ] | [ ${
-            new Date(t.transactionDetail.transactionDate).getMonth() + 1
-          }/${new Date(
-            t.transactionDetail.transactionDate
-          ).getDate()}/${new Date(
-            t.transactionDetail.transactionDate
-          ).getFullYear()} ]`;
+          return `${t.additionalInfo.orderItems[0].productName} [${t.additionalInfo.orderItems[0].totalPrice.formattedValue
+            }] | [ ${formattedSkuId} ] | [ ${new Date(t.transactionDetail.transactionDate).getMonth() + 1
+            }/${new Date(
+              t.transactionDetail.transactionDate
+            ).getDate()}/${new Date(
+              t.transactionDetail.transactionDate
+            ).getFullYear()} ]`;
         })
         .join("\n"),
     };
@@ -908,46 +918,42 @@ async function runPsnApiTool(options) {
         const hasSixMonthsPassed =
           finalResponses.newDevices.length > 0
             ? new Date(
-                finalResponses.newDevices.reduce((latest, current) =>
-                  new Date(current.activationDate) >
+              finalResponses.newDevices.reduce((latest, current) =>
+                new Date(current.activationDate) >
                   new Date(latest.activationDate)
-                    ? current
-                    : latest
-                ).activationDate
-              ) < new Date(new Date().setMonth(new Date().getMonth() - 6))
+                  ? current
+                  : latest
+              ).activationDate
+            ) < new Date(new Date().setMonth(new Date().getMonth() - 6))
             : false;
+
+        const countryCode = finalResponses.address?.country || null
 
         // ساخت خروجی نهایی به صورت متن
         const output = `
 ----------------------- « Account Info » -----------------------
 - Account : ${credentials}
 - Npsso : ${npsso}
-- Backup Codes :  [ ${
-          finalResponses.backupCodes
+- Backup Codes :  [ ${finalResponses.backupCodes
             ? finalResponses.backupCodes.join(" - ")
             : "N/A"
-        } ]
+          } ]
 --------------------------- « Details » --------------------------
-- Country | City | Postal Code : ${
-          finalResponses.address?.country || "N/A"
-        } - ${finalResponses.address?.city || "N/A"} - ${
-          finalResponses.address?.postalCode || "N/A"
-        }
-- Balance : ${finalResponses.wallets?.debtBalance}.${
-          finalResponses.wallets?.currentAmount
-        } ${finalResponses.wallets?.currencyCode || ""}
+- Country | City | Postal Code : ${countryCode ? (countries.find((item) => item.code === countryCode)).name : "N/A"
+          } - ${finalResponses.address?.city || "N/A"} - ${finalResponses.address?.postalCode || "N/A"
+          }
+- Balance : ${finalResponses.wallets?.debtBalance}.${finalResponses.wallets?.currentAmount
+          } ${finalResponses.wallets?.currencyCode || ""}
 - PSN ID : ${finalResponses.profile?.onlineId || "N/A"}
 - Payments : ${finalResponses.creditCards || "Not Found"} 
-- PS Plus : ${
-          finalResponses.profile?.isPsPlusMember ? `Yes! - ${plusTitle}` : "No!"
-        }
-- Devices : [ ${
-          finalResponses.newDevices
+- PS Plus : ${finalResponses.profile?.isPsPlusMember ? `Yes! - ${plusTitle}` : "No!"
+          }
+- Devices : [ ${finalResponses.newDevices
             ? [
-                ...new Set(finalResponses.newDevices.map((d) => d.deviceType)),
-              ].join(" - ")
+              ...new Set(finalResponses.newDevices.map((d) => d.deviceType)),
+            ].join(" - ")
             : "N/A"
-        } ]
+          } ]
 - Deactive : ${hasSixMonthsPassed === false ? "No!" : "Yes!"}
 - Transaction Numbers : ${finalResponses.transactionNumbers || "N/A"}
 --------------------------- « Games » ---------------------------

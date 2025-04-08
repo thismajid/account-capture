@@ -11,11 +11,97 @@ const fs = require("fs").promises;
 const http = require("http");
 const socketIo = require("socket.io");
 const { runPsnApiTool, testProxy } = require("./psn-api");
+const cookieParser = require('cookie-parser');
+const crypto = require('crypto');
 
 // Initialize Express app
 const app = express();
 const server = http.createServer(app);
 const io = socketIo(server);
+
+// مسیر فایل پسورد
+const PASSWORD_FILE_PATH = path.join(__dirname, 'data', 'password.json');
+
+// تابع بارگذاری اطلاعات پسورد
+async function loadPasswordData() {
+  try {
+    const data = await fs.readFile(PASSWORD_FILE_PATH, 'utf8');
+    return JSON.parse(data);
+  } catch (error) {
+    console.error('Error loading password data:', error);
+    // در صورت عدم وجود فایل، یک پسورد پیش‌فرض ایجاد می‌کنیم
+    const defaultPassword = 'admin123';
+    const salt = crypto.randomBytes(16).toString('hex');
+    const hash = crypto
+      .createHmac('sha256', salt)
+      .update(defaultPassword)
+      .digest('hex');
+
+    const passwordData = { hash, salt };
+
+    // ایجاد دایرکتوری data اگر وجود نداشته باشد
+    await fs.mkdir(path.join(__dirname, 'data'), { recursive: true });
+
+    // ذخیره پسورد پیش‌فرض
+    await fs.writeFile(PASSWORD_FILE_PATH, JSON.stringify(passwordData, null, 2), 'utf8');
+
+    console.log('Default password created: admin123');
+    return passwordData;
+  }
+}
+
+// تابع بررسی اعتبار پسورد
+function verifyPassword(inputPassword, storedHash, storedSalt) {
+  const inputHash = crypto
+    .createHmac('sha256', storedSalt)
+    .update(inputPassword)
+    .digest('hex');
+
+  return inputHash === storedHash;
+}
+
+async function loadOrCreateCookieSecret() {
+  const secretFilePath = path.join(__dirname, 'data', 'cookie-secret.json');
+  
+  try {
+    // سعی می‌کنیم فایل موجود را بخوانیم
+    const data = await fs.readFile(secretFilePath, 'utf8');
+    const secretData = JSON.parse(data);
+    return secretData.secret;
+  } catch (error) {
+    // اگر فایل وجود نداشت، یک کلید جدید ایجاد می‌کنیم
+    const newSecret = crypto.randomBytes(32).toString('hex');
+    
+    // اطمینان از وجود دایرکتوری data
+    await fs.mkdir(path.join(__dirname, 'data'), { recursive: true });
+    
+    // ذخیره کلید جدید
+    await fs.writeFile(secretFilePath, JSON.stringify({ secret: newSecret }, null, 2), 'utf8');
+    
+    console.log('New cookie secret created and saved');
+    return newSecret;
+  }
+}
+
+// تغییر تنظیمات احراز هویت برای استفاده از کلید ذخیره شده
+let AUTH_CONFIG = {
+  username: 'admin', // نام کاربری ثابت
+  cookieName: 'psn_api_auth',
+  cookieMaxAge: 30 * 24 * 60 * 60 * 1000 // 30 روز
+};
+
+// بارگذاری یا ایجاد کلید رمزنگاری کوکی در زمان راه‌اندازی سرور
+(async function initializeAuth() {
+  try {
+    AUTH_CONFIG.cookieSecret = await loadOrCreateCookieSecret();
+    console.log('Cookie secret loaded successfully');
+  } catch (error) {
+    console.error('Error loading cookie secret:', error);
+    // در صورت خطا، یک کلید موقت ایجاد می‌کنیم
+    AUTH_CONFIG.cookieSecret = crypto.randomBytes(32).toString('hex');
+    console.warn('Using temporary cookie secret - all users will need to login again');
+  }
+})();
 
 // Set up EJS as the view engine
 app.set("view engine", "ejs");
@@ -25,6 +111,7 @@ app.set("views", path.join(__dirname, "views"));
 app.use(express.static(path.join(__dirname, "public")));
 app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
+app.use(cookieParser());
 app.use(
   fileUpload({
     createParentPath: true,
@@ -33,6 +120,54 @@ app.use(
     },
   })
 );
+
+// تابع بررسی اعتبار کوکی
+function validateAuthCookie(req) {
+  const authCookie = req.cookies[AUTH_CONFIG.cookieName];
+
+  if (!authCookie) {
+    return false;
+  }
+
+  try {
+    const [timestamp, hash] = authCookie.split('|');
+    
+    // بررسی اعتبار هش
+    const expectedHash = crypto
+      .createHmac('sha256', AUTH_CONFIG.cookieSecret)
+      .update(timestamp + AUTH_CONFIG.username)
+      .digest('hex');
+    
+    // بررسی تطابق هش و عدم منقضی شدن کوکی
+    const isValidHash = hash === expectedHash;
+    
+    // اگر remember me انتخاب نشده بود، کوکی بعد از بستن مرورگر منقضی می‌شود
+    // در اینجا نیازی به بررسی زمان نیست چون مرورگر خودش کوکی‌های session را مدیریت می‌کند
+    
+    return isValidHash;
+  } catch (error) {
+    console.error('Auth cookie validation error:', error);
+    return false;
+  }
+}
+
+// میدلور بررسی احراز هویت
+function requireAuth(req, res, next) {
+  if (validateAuthCookie(req)) {
+    next();
+  } else {
+    res.redirect('/login');
+  }
+}
+
+// میدلور هدایت کاربران احراز هویت شده
+function redirectIfAuthenticated(req, res, next) {
+  if (validateAuthCookie(req)) {
+    res.redirect('/');
+  } else {
+    next();
+  }
+}
 
 // Store active jobs
 const activeJobs = new Map();
@@ -67,7 +202,6 @@ async function ensureDataDirectory() {
   }
 }
 
-// Add proxies to database without duplicates
 async function addProxiesToDatabase(proxies) {
   try {
     // Read existing proxies
@@ -140,71 +274,129 @@ async function getAndRemoveRandomProxy() {
   }
 }
 
-// Initialize data directory on startup
-ensureDataDirectory();
+
+// مسیر صفحه لاگین
+app.get('/login', redirectIfAuthenticated, (req, res) => {
+  res.render('login', {
+    error: req.query.error || null
+  });
+});
+
+// پردازش فرم لاگین
+// پردازش فرم لاگین
+app.post('/login', async (req, res) => {
+  try {
+    const { username, password, rememberMe } = req.body;
+
+    // بارگذاری اطلاعات پسورد
+    const passwordData = await loadPasswordData();
+
+    // بررسی اعتبار نام کاربری و رمز عبور
+    if (username === AUTH_CONFIG.username &&
+      verifyPassword(password, passwordData.hash, passwordData.salt)) {
+
+      // ایجاد کوکی احراز هویت
+      const timestamp = Date.now().toString();
+      const hash = crypto
+        .createHmac('sha256', AUTH_CONFIG.cookieSecret)
+        .update(timestamp + username)
+        .digest('hex');
+
+      // تنظیم کوکی
+      const cookieOptions = {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'strict'
+      };
+      
+      // اگر "مرا به خاطر بسپار" انتخاب شده باشد، زمان انقضا تنظیم می‌شود
+      if (rememberMe === 'on') {
+        cookieOptions.maxAge = AUTH_CONFIG.cookieMaxAge;
+      }
+      
+      res.cookie(AUTH_CONFIG.cookieName, `${timestamp}|${hash}`, cookieOptions);
+
+      // هدایت به صفحه اصلی
+      res.redirect('/');
+    } else {
+      // خطای لاگین
+      res.redirect('/login?error=Invalid%20username%20or%20password');
+    }
+  } catch (error) {
+    console.error('Login error:', error);
+    res.redirect('/login?error=An%20error%20occurred%20during%20login');
+  }
+});
+
+// مسیر خروج
+app.get('/logout', (req, res) => {
+  res.clearCookie(AUTH_CONFIG.cookieName);
+  res.redirect('/login');
+});
+
 
 // Routes
-app.get("/", (req, res) => {
+app.get("/", requireAuth, (req, res) => {
   res.render("index", { title: "PlayStation API Tool" });
 });
 
-app.post('/run-tool', async (req, res) => {
+app.post('/run-tool', requireAuth, async (req, res) => {
   try {
     const { credentials, npsso, useProxy } = req.body;
     let proxyFile = null;
     let proxyData = null;
     let selectedProxy = null;
-    
+
     // Validate credentials format without splitting
     if (!credentials || !credentials.includes(':')) {
       throw new Error('Invalid credentials format. Please use email:password format.');
     }
-    
+
     console.log('Received request with credentials');
     console.log('Use proxy:', useProxy === 'true' ? 'Yes' : 'No');
-    
+
     // Check if proxy file was uploaded
     if (req.files && req.files.proxyFile) {
       const uploadedFile = req.files.proxyFile;
       const uploadDir = path.join(__dirname, 'uploads');
-      
+
       // Ensure upload directory exists
       await fs.mkdir(uploadDir, { recursive: true });
-      
+
       // Save the file
       const filePath = path.join(uploadDir, uploadedFile.name);
       await uploadedFile.mv(filePath);
-      
+
       // Read proxy data
       proxyData = await fs.readFile(filePath, 'utf8');
       console.log('Proxy file loaded:', uploadedFile.name);
-      
+
       // Add proxies to database
       const proxies = proxyData.split('\n').filter(line => line.trim() !== '');
       const dbResult = await addProxiesToDatabase(proxies);
       console.log(`Added ${dbResult.addedProxies} new proxies to database. Total proxies: ${dbResult.totalProxies}`);
-      
+
       proxyFile = filePath;
     }
-    
+
     // Only try to get a working proxy if useProxy is true
     let workingProxy = null;
     if (useProxy === 'true') {
       let proxyTestAttempts = 0;
       const maxProxyTestAttempts = 5;
-      
+
       while (!workingProxy && proxyTestAttempts < maxProxyTestAttempts) {
         proxyTestAttempts++;
         console.log(`Proxy test attempt ${proxyTestAttempts} of ${maxProxyTestAttempts}`);
-        
+
         selectedProxy = await getAndRemoveRandomProxy();
         if (!selectedProxy) {
           console.log('No proxies available in database');
           break;
         }
-        
+
         console.log(`Testing proxy: ${selectedProxy}`);
-        
+
         // Test both protocols (HTTPS and SOCKS5)
         const httpsResult = await testProxy(selectedProxy, 'https');
         if (httpsResult.success) {
@@ -212,17 +404,17 @@ app.post('/run-tool', async (req, res) => {
           console.log(`Found working HTTPS proxy: ${selectedProxy}`);
           break;
         }
-        
+
         const socks5Result = await testProxy(selectedProxy, 'socks5');
         if (socks5Result.success) {
           workingProxy = { proxy: selectedProxy, protocol: 'socks5' };
           console.log(`Found working SOCKS5 proxy: ${selectedProxy}`);
           break;
         }
-        
+
         console.log(`Proxy ${selectedProxy} failed both HTTPS and SOCKS5 tests`);
       }
-      
+
       if (workingProxy) {
         proxyData = workingProxy.proxy;
         console.log(`Using working proxy: ${proxyData} (${workingProxy.protocol})`);
@@ -232,14 +424,14 @@ app.post('/run-tool', async (req, res) => {
     } else {
       console.log('Proxy usage disabled by user. Continuing without proxy.');
     }
-    
+
     // Generate a unique job ID
     const jobId = Date.now().toString();
     console.log('Generated job ID:', jobId);
-    
+
     // Create a socket room for this job
     const roomName = `job-${jobId}`;
-    
+
     // Store job info
     activeJobs.set(jobId, {
       status: 'running',
@@ -247,18 +439,18 @@ app.post('/run-tool', async (req, res) => {
       credentials,
       results: null
     });
-    
+
     // Render the result page immediately
-    res.render('result', { 
+    res.render('result', {
       title: 'Processing Request',
       jobId,
       initialStatus: 'running'
     });
-    
+
     // Add a short delay to ensure the result page is fully loaded
     setTimeout(() => {
       console.log('Starting PSN API tool for job:', jobId);
-      
+
       // Run the PSN API tool in the background with the combined credentials
       runPsnApiTool({
         credentials,  // Pass the combined credentials directly
@@ -281,7 +473,7 @@ app.post('/run-tool', async (req, res) => {
             endTime: new Date(),
             results
           });
-          
+
           io.to(roomName).emit('complete', { results });
         },
         onError: (error) => {
@@ -292,15 +484,15 @@ app.post('/run-tool', async (req, res) => {
             endTime: new Date(),
             error: error.message
           });
-          
+
           io.to(roomName).emit('error', { error: error.message });
         }
       });
     }, 1000);
-    
+
   } catch (error) {
     console.error('Error processing request:', error);
-    res.render('error', { 
+    res.render('error', {
       title: 'Error',
       message: error.message
     });
@@ -308,7 +500,7 @@ app.post('/run-tool', async (req, res) => {
 });
 
 // API endpoint to get job status
-app.get("/api/job/:jobId", (req, res) => {
+app.get("/api/job/:jobId", requireAuth, (req, res) => {
   const { jobId } = req.params;
   const job = activeJobs.get(jobId);
 
@@ -320,7 +512,7 @@ app.get("/api/job/:jobId", (req, res) => {
 });
 
 // Join a job room for real-time updates
-app.post("/api/job/:jobId/join", (req, res) => {
+app.post("/api/job/:jobId/join", requireAuth, (req, res) => {
   const { jobId } = req.params;
   const { socketId } = req.body;
 
@@ -345,7 +537,7 @@ app.post("/api/job/:jobId/join", (req, res) => {
 });
 
 // API endpoint for proxy testing
-app.post("/api/test-proxy", async (req, res) => {
+app.post("/api/test-proxy", requireAuth, async (req, res) => {
   try {
     const { proxy } = req.body;
 
@@ -368,7 +560,7 @@ app.post("/api/test-proxy", async (req, res) => {
 });
 
 // API endpoint to upload proxies
-app.post("/api/upload-proxies", async (req, res) => {
+app.post("/api/upload-proxies", requireAuth, async (req, res) => {
   try {
     if (!req.files || !req.files.proxyFile) {
       return res.status(400).json({ error: "No proxy file uploaded" });
@@ -393,7 +585,7 @@ app.post("/api/upload-proxies", async (req, res) => {
 });
 
 // API endpoint to get all proxies
-app.get("/api/proxies", async (req, res) => {
+app.get("/api/proxies", requireAuth, async (req, res) => {
   try {
     let proxies = [];
     try {
@@ -414,7 +606,7 @@ app.get("/api/proxies", async (req, res) => {
 });
 
 // Batch processing endpoint
-app.post("/api/batch-process", async (req, res) => {
+app.post("/api/batch-process", requireAuth, async (req, res) => {
   try {
     // Implementation for batch processing would go here
     res.json({ success: true, jobId: Date.now().toString() });
@@ -423,24 +615,24 @@ app.post("/api/batch-process", async (req, res) => {
   }
 });
 
-app.get('/download', (req, res) => {
+app.get('/download', requireAuth, (req, res) => {
   try {
     const filePath = req.query.file;
-    
+
     // بررسی اعتبار مسیر فایل (برای جلوگیری از path traversal)
     const normalizedPath = path.normalize(filePath);
     if (!normalizedPath.startsWith(path.join(__dirname, 'output'))) {
       return res.status(403).send('دسترسی غیرمجاز');
     }
-    
+
     // بررسی وجود فایل
     if (!fs.existsSync(normalizedPath)) {
       return res.status(404).send('فایل یافت نشد');
     }
-    
+
     // استخراج نام فایل از مسیر
     const fileName = path.basename(normalizedPath);
-    
+
     // ارسال فایل
     res.download(normalizedPath, fileName);
   } catch (error) {
@@ -450,7 +642,7 @@ app.get('/download', (req, res) => {
 });
 
 // ایجاد دایرکتوری خروجی در شروع برنامه
-(async function() {
+(async function () {
   try {
     await fs.mkdir(path.join(__dirname, 'output'), { recursive: true });
   } catch (error) {
