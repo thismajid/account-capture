@@ -22,7 +22,7 @@ const TARGET_URLS = [
   "https://accounts.api.playstation.com/api/v1/accounts/me/communication",
   /\/twostepbackupcodes$/,
   "https://accounts.api.playstation.com/api/v1/accounts/me/addresses",
-  "https://web.np.playstation.com/api/graphql/v2/transact/wallets/savedInstruments",
+  "https://web.np.playstation.com/api/graphql/v2/transact/wallets/savedInstruments"
 ];
 
 // Page configurations
@@ -30,12 +30,12 @@ const PAGE_CONFIGS = {
   FIRST: {
     url: "https://id.sonyentertainmentnetwork.com/id/management/#/p?entry=p",
     name: "page1",
-    waitTime: 8000, // کاهش زمان انتظار از 15000 به 8000
+    waitTime: 15000,
   },
   SECOND: {
     url: "https://library.playstation.com/recently-purchased",
     name: "page2",
-    waitTime: 6000, // کاهش زمان انتظار از 10000 به 6000
+    waitTime: 10000,
   },
   API_URL:
     "https://web.np.playstation.com/api/graphql/v2/transact/wallets/paymentMethods?tenant=PSN",
@@ -101,8 +101,7 @@ function isRelevantRequest(url) {
  * @returns {boolean} Whether the response should be processed
  */
 function isRelevantResponse(url) {
-  // بهینه‌سازی: استفاده از Set برای جستجوی سریع‌تر
-  const ignoredResources = new Set([
+  const ignoredResources = [
     ".ico",
     ".png",
     ".jpg",
@@ -110,9 +109,8 @@ function isRelevantResponse(url) {
     ".js",
     ".woff",
     ".woff2",
-  ]);
-
-  return ![...ignoredResources].some((resource) => url.includes(resource));
+  ];
+  return !ignoredResources.some((resource) => url.includes(resource));
 }
 
 /**
@@ -123,15 +121,9 @@ function isRelevantResponse(url) {
  */
 async function extractResponseData(response, headers) {
   const contentType = headers["content-type"] || "";
-  // بهینه‌سازی: استفاده از Set برای جستجوی سریع‌تر
-  const textBasedTypes = new Set(["json", "text", "html", "xml"]);
+  const textBasedTypes = ["json", "text", "html", "xml"];
 
-  // بررسی سریع‌تر نوع محتوا
-  const isTextBased = [...textBasedTypes].some((type) =>
-    contentType.includes(type)
-  );
-
-  if (isTextBased) {
+  if (textBasedTypes.some((type) => contentType.includes(type))) {
     try {
       const text = await response.text();
 
@@ -158,20 +150,14 @@ async function extractResponseData(response, headers) {
  * @returns {string} Operation name or endpoint
  */
 function extractOperationName(url) {
-  try {
-    const urlObj = new URL(url);
+  const urlObj = new URL(url);
 
-    if (urlObj.searchParams.has("operationName")) {
-      return urlObj.searchParams.get("operationName");
-    } else {
-      // Use the last part of the path if no operationName
-      const pathParts = urlObj.pathname.split("/");
-      return pathParts[pathParts.length - 1];
-    }
-  } catch (e) {
-    // اگر URL نامعتبر باشد، بخش آخر مسیر را برگردان
-    const parts = url.split("/");
-    return parts[parts.length - 1];
+  if (urlObj.searchParams.has("operationName")) {
+    return urlObj.searchParams.get("operationName");
+  } else {
+    // Use the last part of the path if no operationName
+    const pathParts = urlObj.pathname.split("/");
+    return pathParts[pathParts.length - 1];
   }
 }
 
@@ -242,39 +228,38 @@ async function setupRequestAndResponseTracking(
 
       if (requestInfo && isRelevantResponse(url)) {
         const responseHeaders = response.headers();
+        let responseData = await extractResponseData(response, responseHeaders);
 
-        // بهینه‌سازی: بررسی سریع URL قبل از استخراج داده‌ها
-        let isTargetUrl = false;
+        // بررسی اینکه url با یکی از targetUrl ها مچ بشه
         for (const targetUrl of targetUrls) {
           if (isMatchingTargetUrl(url, targetUrl)) {
-            isTargetUrl = true;
+            onProgress(`Found target request: ${url}`);
+
+            const operationName = extractOperationName(url);
+            console.log("operationName =======> ", operationName);
+
+            if(operationName === 'operationName') {
+              const allCookies = await page.cookies()
+              const twoSteps = await axios.get(
+                url,
+                {
+                  headers: {
+                    Cookie: allCookies
+                      .map((cookie) => `${cookie.name}=${cookie.value}`)
+                      .join("; "),
+                  },
+                }
+              );
+
+              console.log(twoSteps);
+              process.exit(1)
+              
+            }
+
+            processTargetResponse(operationName, responseData, finalResponses);
+            onData(finalResponses);
             break;
           }
-        }
-
-        if (isTargetUrl) {
-          let responseData = await extractResponseData(
-            response,
-            responseHeaders
-          );
-          onProgress(`Found target request: ${url}`);
-
-          const operationName = extractOperationName(url);
-
-          if (operationName === "operationName") {
-            const allCookies = await page.cookies();
-            const twoSteps = await axios.get(url, {
-              headers: {
-                Cookie: formatCookiesForHeader(allCookies),
-              },
-            });
-
-            console.log(twoSteps);
-            process.exit(1);
-          }
-
-          processTargetResponse(operationName, responseData, finalResponses);
-          onData(finalResponses);
         }
       }
     } catch (error) {
@@ -434,11 +419,9 @@ async function createConfiguredPage(
  */
 async function navigateToPage(page, url, description, onProgress) {
   onProgress(`Opening ${description} (${url})...`);
-
-  // بهینه‌سازی: کاهش timeout از 60000 به 45000
   await page.goto(url, {
     waitUntil: "networkidle2",
-    timeout: 45000,
+    timeout: 60000,
   });
   onProgress(`${description} loaded successfully.`);
 }
@@ -473,68 +456,6 @@ function combineUniqueCookies(...cookieArrays) {
 async function wait(ms, reason, onProgress) {
   onProgress(`Waiting ${ms}ms ${reason ? "(" + reason + ")" : ""}...`);
   return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-/**
- * Fetches data from PlayStation APIs using the provided cookies
- * @param {Array} cookies - Browser cookies to use for authentication
- * @returns {Promise<Object>} Combined API responses
- */
-async function fetchApiData(cookies, onProgress) {
-  onProgress("شروع دریافت اطلاعات از APIهای PlayStation...");
-
-  const cookieHeader = formatCookiesForHeader(cookies);
-  const headers = { Cookie: cookieHeader };
-
-  // بهینه‌سازی: اجرای موازی درخواست‌های API به جای اجرای متوالی
-  try {
-    const [creditCardsResponse, walletsResponse, transactionsResponse] =
-      await Promise.all([
-        axios.get(
-          "https://web.np.playstation.com/api/graphql/v2/transact/wallets/savedInstruments?tenant=PSN",
-          { headers }
-        ),
-        axios.get(
-          "https://web.np.playstation.com/api/graphql/v2/transact/wallets?tenant=PSN",
-          { headers }
-        ),
-        axios.get(
-          "https://web.np.playstation.com/api/graphql/v1/transact/transaction/history",
-          {
-            params: {
-              limit: 180,
-              startDate: "2010-01-01T00:00:00.000-0400",
-              endDate: "2025-04-06T23:59:59.999-0400",
-              includePurged: false,
-              transactionTypes: [
-                "CREDIT",
-                "CYCLE_SUBSCRIPTION",
-                "DEBIT",
-                "DEPOSIT_CHARGE",
-                "DEPOSIT_VOUCHER",
-                "PRODUCT_PURCHASE",
-                "REFUND_PAYMENT_CHARGE",
-                "REFUND_PAYMENT_WALLET",
-                "VOUCHER_PURCHASE",
-                "WALLET_BALANCE_CONVERSION",
-              ].join(","),
-            },
-            headers,
-          }
-        ),
-      ]);
-
-    onProgress("دریافت اطلاعات از APIها با موفقیت انجام شد");
-
-    return {
-      creditCards: creditCardsResponse.data,
-      wallets: walletsResponse.data,
-      transactions: transactionsResponse.data,
-    };
-  } catch (error) {
-    onProgress(`خطا در دریافت اطلاعات API: ${error.message}`);
-    throw error;
-  }
 }
 
 /**
@@ -579,7 +500,7 @@ async function runPsnApiTool(options) {
 
   // Browser launch options
   const browserOptions = {
-    headless: "new", // در تولید می‌توانید headless را true کنید
+    headless: 'new', // در تولید می‌توانید headless را true کنید
     defaultViewport: { width: 1920, height: 1080 },
     args: [
       "--no-sandbox",
@@ -590,7 +511,7 @@ async function runPsnApiTool(options) {
       "--disable-site-isolation-trials",
       "--disable-dev-shm-usage",
       "--disable-accelerated-2d-canvas",
-      "--disable-gpu",
+      "--disable-gpu"
     ],
   };
 
@@ -620,10 +541,19 @@ async function runPsnApiTool(options) {
     );
 
     // Navigate to first page
-    await navigateToPage(page1, PAGE_CONFIGS.FIRST.url, "صفحه اول", onProgress);
+    await navigateToPage(
+      page1,
+      PAGE_CONFIGS.FIRST.url,
+      "صفحه اول",
+      onProgress
+    );
 
-    // بهینه‌سازی: کاهش زمان انتظار از 10000 به 5000
-    await wait(5000, "تا بارگذاری صفحه اول کامل شود", onProgress);
+    // Wait for first page to fully load and cookies to be set
+    await wait(
+      10000,
+      "تا بارگذاری صفحه اول کامل شود",
+      onProgress
+    );
 
     // Get cookies from first page
     const cookies = await page1.cookies();
@@ -638,69 +568,53 @@ async function runPsnApiTool(options) {
 
     try {
       onProgress("در حال تلاش برای کلیک روی عنصر مشخص...");
+      await page1.waitForXPath(
+        '/html/body/div[3]/div/div[2]/div/div/div/div[2]/div/div[2]/div/div/ul/li[1]/ul/li[2]/div',
+        { timeout: 20000 }
+      );
+      const [element] = await page1.$x(
+        '/html/body/div[3]/div/div[2]/div/div/div/div[2]/div/div[2]/div/div/ul/li[1]/ul/li[2]/div'
+      );
 
-      // بهینه‌سازی: کاهش timeout از 20000 به 10000
-      const elementXPath =
-        "/html/body/div[3]/div/div[2]/div/div/div/div[2]/div/div[2]/div/div/ul/li[1]/ul/li[2]/div";
-      await page1
-        .waitForXPath(elementXPath, { timeout: 10000 })
-        .then(async () => {
-          const [element] = await page1.$x(elementXPath);
-          if (element) {
-            onProgress("عنصر یافت شد؛ کلیک...");
-            await element.click();
-            onProgress("کلیک موفقیت‌آمیز.");
+      if (element) {
+        onProgress("عنصر یافت شد؛ کلیک...");
+        await element.click();
+        onProgress("کلیک موفقیت‌آمیز.");
 
-            // بهینه‌سازی: کاهش زمان انتظار از 3000 به 2000
-            await wait(2000, "پس از کلیک", onProgress);
+        await wait(3000, "پس از کلیک", onProgress);
 
-            onProgress("در انتظار ناوبری پس از کلیک اول...");
-            await page1
-              .waitForNavigation({
-                waitUntil: "networkidle2",
-                timeout: 8000, // کاهش timeout از 10000 به 8000
-              })
-              .catch(() => {
-                onProgress("ناوبری رخ نداد یا قبلاً انجام شده است.");
-              });
-
-            // بهینه‌سازی: کاهش زمان انتظار از 3000 به 2000
-            await wait(2000, "تا پایداری صفحه جدید", onProgress);
-
-            const secondElementXPath =
-              '//*[@id="ember138"]/div/div/div/div[1]/div';
-            onProgress(
-              `در حال تلاش برای یافتن و کلیک روی عنصر با XPath مشخص: ${secondElementXPath}`
-            );
-
-            try {
-              await page1.waitForXPath(secondElementXPath, { timeout: 5000 });
-              const [secondElement] = await page1.$x(
-                "/html/body/div[3]/div/div[2]/div/div/div/div[2]/div/div[3]/div/div/div/div/div/main/div/div/div[2]/div[1]/ul[3]/li[3]/button/div/div/div/div[1]/div"
-              );
-
-              if (secondElement) {
-                onProgress("عنصر دوم پیدا شد؛ کلیک...");
-                await secondElement.click();
-                onProgress("کلیک عنصر دوم موفقیت‌آمیز.");
-
-                // بهینه‌سازی: کاهش زمان انتظار از 3000 به 2000
-                await wait(2000, "پس از کلیک عنصر دوم", onProgress);
-              } else {
-                onProgress("عنصر دوم پیدا نشد؛ ادامه روند...");
-              }
-            } catch (error) {
-              onProgress(
-                `عنصر دوم در زمان تعیین شده یافت نشد: ${error.message}`
-              );
-            }
+        onProgress("در انتظار ناوبری پس از کلیک اول...");
+        try {
+          await page1.waitForNavigation({
+            waitUntil: "networkidle2",
+            timeout: 10000,
+          }).catch(() => {
+            onProgress("ناوبری رخ نداد یا قبلاً انجام شده است.");
+          });
+          await wait(3000, "تا پایداری صفحه جدید", onProgress);
+          onProgress(
+            'در حال تلاش برای یافتن و کلیک روی عنصري با XPath مشخص: //*[@id="ember138"]/div/div/div/div[1]/div'
+          );
+          await page1.waitForXPath('//*[@id="ember138"]/div/div/div/div[1]/div', { timeout: 5000 }).catch(e => {
+            onProgress(`عنصر با XPath مشخص در زمان تعیین شده یافت نشد: ${e.message}`);
+          });
+          const [secondElement] = await page1.$x(
+            '/html/body/div[3]/div/div[2]/div/div/div/div[2]/div/div[3]/div/div/div/div/div/main/div/div/div[2]/div[1]/ul[3]/li[3]/button/div/div/div/div[1]/div'
+          );
+          if (secondElement) {
+            onProgress("عنصر دوم پیدا شد؛ کلیک...");
+            await secondElement.click();
+            onProgress("کلیک عنصر دوم موفقیت‌آمیز.");
+            await wait(3000, "پس از کلیک عنصر دوم", onProgress);
           } else {
-            onProgress("عنصر با XPath مشخص یافت نشد.");
+            onProgress("عنصر دوم پیدا نشد؛ ادامه روند...");
           }
-        })
-        .catch((error) => {
-          onProgress(`خطا در یافتن عنصر اول: ${error.message}`);
-        });
+        } catch (error) {
+          onProgress(`خطا در کلیک دوم: ${error.message}`);
+        }
+      } else {
+        onProgress("عنصر با XPath مشخص یافت نشد.");
+      }
     } catch (error) {
       onProgress(`خطا هنگام تلاش برای کلیک روی عنصر: ${error.message}`);
     }
@@ -726,51 +640,99 @@ async function runPsnApiTool(options) {
       onProgress
     );
 
-    // بهینه‌سازی: کاهش زمان انتظار از 8000 به 5000
-    await wait(5000, "پیش از بارگذاری مجدد صفحه دوم", onProgress);
+    await wait(8000, "پیش از بارگذاری مجدد صفحه دوم", onProgress);
 
-    // بهینه‌سازی: کاهش تعداد بارگذاری مجدد به یک بار
     await navigateToPage(
       page2,
       PAGE_CONFIGS.SECOND.url,
-      "صفحه دوم (Reload)",
+      "صفحه دوم (Reload 1)",
       onProgress
     );
 
-    // بهینه‌سازی: کاهش زمان انتظار از 8000 به 5000
-    await wait(5000, "برای پردازش صفحه نهایی", onProgress);
+    await wait(8000, "پس از Reload", onProgress);
+
+    await navigateToPage(
+      page2,
+      PAGE_CONFIGS.SECOND.url,
+      "صفحه دوم (Reload 2)",
+      onProgress
+    );
+
+    await wait(8000, "برای پردازش صفحه نهایی", onProgress);
 
     onProgress("دریافت کوکی‌های نهایی از تمامی صفحات...");
     const finalPage1Cookies = await page1.cookies();
     const finalPage2Cookies = await page2.cookies();
 
-    onProgress(
-      `تعداد کوکی دریافت شده: صفحه1=${finalPage1Cookies.length}, صفحه2=${finalPage2Cookies.length}`
-    );
+    onProgress(`تعداد کوکی دریافت شده: صفحه1=${finalPage1Cookies.length}, صفحه2=${finalPage2Cookies.length}`);
 
-    const allCookies = combineUniqueCookies(
-      finalPage1Cookies,
-      finalPage2Cookies
-    );
+    const allCookies = combineUniqueCookies(finalPage1Cookies, finalPage2Cookies);
     onProgress(`تعداد کوکی‌های ترکیبی: ${allCookies.length}`);
 
-    // بهینه‌سازی: استفاده از تابع fetchApiData برای اجرای موازی درخواست‌های API
-    const apiData = await fetchApiData(allCookies, onProgress);
+    const creditCards = await axios.get(
+      "https://web.np.playstation.com/api/graphql/v2/transact/wallets/savedInstruments?tenant=PSN",
+      {
+        headers: {
+          Cookie: allCookies
+            .map((cookie) => `${cookie.name}=${cookie.value}`)
+            .join("; "),
+        },
+      }
+    );
 
     finalResponses = {
       ...finalResponses,
-      creditCards: generatePaymentMethodsText(apiData.creditCards),
-      wallets: apiData.wallets,
+      creditCards: generatePaymentMethodsText(creditCards.data),
     };
 
-    const plusTitle = finalResponses.profile?.isPsPlusMember
-      ? findAndProcessPlayStationPlusItem(apiData.transactions.transactions)
-      : null;
+    const wallets = await axios.get(
+      "https://web.np.playstation.com/api/graphql/v2/transact/wallets?tenant=PSN",
+      {
+        headers: {
+          Cookie: allCookies
+            .map((cookie) => `${cookie.name}=${cookie.value}`)
+            .join("; "),
+        },
+      }
+    );
+
+    finalResponses = { ...finalResponses, wallets: wallets.data };
+
+    const transactions = await axios.get(
+      "https://web.np.playstation.com/api/graphql/v1/transact/transaction/history",
+      {
+        params: {
+          limit: 180,
+          startDate: "2010-01-01T00:00:00.000-0400",
+          endDate: "2025-04-06T23:59:59.999-0400",
+          includePurged: false,
+          transactionTypes: [
+            "CREDIT",
+            "CYCLE_SUBSCRIPTION",
+            "DEBIT",
+            "DEPOSIT_CHARGE",
+            "DEPOSIT_VOUCHER",
+            "PRODUCT_PURCHASE",
+            "REFUND_PAYMENT_CHARGE",
+            "REFUND_PAYMENT_WALLET",
+            "VOUCHER_PURCHASE",
+            "WALLET_BALANCE_CONVERSION",
+          ].join(","),
+        },
+        headers: {
+          Cookie: allCookies
+            .map((cookie) => `${cookie.name}=${cookie.value}`)
+            .join("; "),
+        },
+      }
+    );
+
+    const plusTitle = finalResponses.profile?.isPsPlusMember ? findAndProcessPlayStationPlusItem(transactions.data.transactions) : null
 
     finalResponses = {
       ...finalResponses,
-      transactionNumbers: apiData.transactions.transactions.length,
-      trans: apiData.transactions.transactions
+      transactionNumbers: transactions.data.transactions.length,
+      trans: transactions.data.transactions
         .filter(
           (t) =>
             t.additionalInfo?.orderItems?.[0]?.totalPrice &&
@@ -794,10 +756,6 @@ async function runPsnApiTool(options) {
         })
         .join("\n"),
     };
-
-    // بهینه‌سازی: می‌توان صفحه اول را بست چون دیگر نیازی به آن نداریم
-    await page1.close();
-    onProgress("صفحه اول بسته شد (آزادسازی منابع)");
 
     const pythonProcess = spawn("python3", ["get_devices.py", npsso]);
 
@@ -826,16 +784,11 @@ async function runPsnApiTool(options) {
         };
 
         const hasSixMonthsPassed =
-          finalResponses.newDevices.length > 0
-            ? new Date(
-                finalResponses.newDevices.reduce((latest, current) =>
-                  new Date(current.activationDate) >
-                  new Date(latest.activationDate)
-                    ? current
-                    : latest
-                ).activationDate
-              ) < new Date(new Date().setMonth(new Date().getMonth() - 6))
-            : false;
+          new Date(
+            finalResponses.newDevices.reduce((latest, current) => 
+              new Date(current.activationDate) > new Date(latest.activationDate) ? current : latest
+            ).activationDate
+          ) < new Date(new Date().setMonth(new Date().getMonth() - 6));
 
         // ساخت خروجی نهایی به صورت متن
         const output = `
@@ -848,24 +801,14 @@ async function runPsnApiTool(options) {
             : "N/A"
         } ]
 --------------------------- « Details » --------------------------
-- Country | City | Postal Code : ${
-          finalResponses.address?.country || "N/A"
-        } - ${finalResponses.address?.city || "N/A"} - ${
-          finalResponses.address?.postalCode || "N/A"
-        }
-- Balance : ${finalResponses.wallets?.debtBalance}.${
-          finalResponses.wallets?.currentAmount
-        } ${finalResponses.wallets?.currencyCode || ""}
+- Country | City | Postal Code : ${finalResponses.address?.country ||  "N/A"} - ${finalResponses.address?.city ||  "N/A"} - ${finalResponses.address?.postalCode || "N/A"}
+- Balance : ${finalResponses.wallets?.debtBalance}.${finalResponses.wallets?.currentAmount} ${finalResponses.wallets?.currencyCode || ""}
 - PSN ID : ${finalResponses.profile?.onlineId || "N/A"}
 - Payments : ${finalResponses.creditCards || "Not Found"} 
-- PS Plus : ${
-          finalResponses.profile?.isPsPlusMember ? `Yes! - ${plusTitle}` : "No!"
-        }
+- PS Plus : ${finalResponses.profile?.isPsPlusMember ? `Yes! - ${plusTitle}` : "No!"}
 - Devices : [ ${
           finalResponses.newDevices
-            ? [
-                ...new Set(finalResponses.newDevices.map((d) => d.deviceType)),
-              ].join(" - ")
+            ? [...new Set(finalResponses.newDevices.map((d) => d.deviceType))].join(" - ")
             : "N/A"
         } ]
 - Deactive : ${hasSixMonthsPassed === false ? "No!" : "Yes!"}
@@ -926,11 +869,7 @@ function generatePaymentMethodsText(response) {
     });
   }
 
-  if (
-    response.payPal &&
-    response.payPal.common.isPaymentMethodAvailable &&
-    !response.payPal.common.banned
-  ) {
+  if (response.payPal && response.payPal.common.isPaymentMethodAvailable && !response.payPal.common.banned) {
     paymentMethodsText.push(`[PayPal]`);
   }
 
@@ -941,40 +880,35 @@ function findAndProcessPlayStationPlusItem(data) {
   if (!Array.isArray(data)) {
     return null;
   }
-
-  // بهینه‌سازی: استفاده از find به جای for برای خوانایی بیشتر و کد کمتر
-  const psItem = data.find((invoice) =>
-    invoice.additionalInfo?.orderItems?.some((item) =>
-      item.productName?.includes("PlayStation Plus")
-    )
-  );
-
-  if (psItem) {
-    const orderItem = psItem.additionalInfo.orderItems.find((item) =>
-      item.productName?.includes("PlayStation Plus")
-    );
-
-    // استخراج عنوان
-    const title = orderItem.productName;
-
-    // استخراج عدد از عنوان (به عنوان ماه)
-    const monthMatch = title.match(/\d+/);
-    const months = monthMatch ? parseInt(monthMatch[0]) : 0;
-
-    // استخراج تاریخ تراکنش
-    const transactionDate = new Date(psItem.transactionDetail.transactionDate);
-
-    // اضافه کردن ماه‌ها به تاریخ
-    const resultDate = new Date(transactionDate);
-    resultDate.setMonth(resultDate.getMonth() + months);
-
-    // فرمت کردن تاریخ به صورت YYYY-MM-DD
-    const formattedDate = resultDate.toISOString().split("T")[0];
-
-    // ساخت خروجی نهایی
-    return `${title} | ${formattedDate}`;
+  
+  for (const invoice of data) {
+    if (invoice.additionalInfo && Array.isArray(invoice.additionalInfo.orderItems)) {
+      for (const orderItem of invoice.additionalInfo.orderItems) {
+        if (orderItem.productName && orderItem.productName.includes("PlayStation Plus")) {
+          // استخراج عنوان
+          const title = orderItem.productName;
+          
+          // استخراج عدد از عنوان (به عنوان ماه)
+          const monthMatch = title.match(/\d+/);
+          const months = monthMatch ? parseInt(monthMatch[0]) : 0;
+          
+          // استخراج تاریخ تراکنش
+          const transactionDate = new Date(invoice.transactionDetail.transactionDate);
+          
+          // اضافه کردن ماه‌ها به تاریخ
+          const resultDate = new Date(transactionDate);
+          resultDate.setMonth(resultDate.getMonth() + months);
+          
+          // فرمت کردن تاریخ به صورت YYYY-MM-DD
+          const formattedDate = resultDate.toISOString().split('T')[0];
+          
+          // ساخت خروجی نهایی
+          return `${title} | ${formattedDate}`;
+        }
+      }
+    }
   }
-
+  
   return null;
 }
 
