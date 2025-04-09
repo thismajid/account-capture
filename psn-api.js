@@ -488,7 +488,7 @@ async function runPsnApiTool(options) {
   } = options;
 
   console.log(countries);
-  
+
 
   // Create a new object to store responses
   let finalResponses = {};
@@ -878,7 +878,7 @@ async function runPsnApiTool(options) {
           const match = fullSkuId.match(/([A-Z0-9]+-[A-Z0-9]+_[0-9]+)/);
           const formattedSkuId = match ? match[0] : fullSkuId; // اگر مطابقتی پیدا نشد، از کل skuId استفاده کن
 
-          return `${t.additionalInfo.orderItems[0].productName} [${t.additionalInfo.orderItems[0].totalPrice.formattedValue
+          return `${t.additionalInfo.orderItems[0].productName} [${t.additionalInfo?.voucherPayments?.length > 0 && t.additionalInfo?.voucherPayments[0].voucherCode ? "Gift Card" : t.additionalInfo.orderItems[0].totalPrice.formattedValue
             }] | [ ${formattedSkuId} ] | [ ${new Date(t.transactionDetail.transactionDate).getMonth() + 1
             }/${new Date(
               t.transactionDetail.transactionDate
