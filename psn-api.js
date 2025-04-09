@@ -869,8 +869,8 @@ async function runPsnApiTool(options) {
       trans: transactions.data.transactions
         .filter(
           (t) =>
-            t.additionalInfo?.orderItems?.[0]?.totalPrice &&
-            Math.abs(t.additionalInfo.orderItems[0].totalPrice.value) > 0
+            (t.additionalInfo?.orderItems?.[0]?.totalPrice &&
+              Math.abs(t.additionalInfo.orderItems[0].totalPrice.value) > 0) || (t.additionalInfo?.voucherPayments?.length > 0 && t.additionalInfo?.voucherPayments[0].voucherCode)
         )
         .map((t) => {
           const fullSkuId = t.additionalInfo.orderItems[0].skuId;
