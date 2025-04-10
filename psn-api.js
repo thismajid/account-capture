@@ -870,7 +870,7 @@ async function runPsnApiTool(options) {
         .filter(
           (t) =>
             (t.additionalInfo?.orderItems?.[0]?.totalPrice &&
-              Math.abs(t.additionalInfo.orderItems[0].totalPrice.value) > 0) || (t.additionalInfo?.voucherPayments?.length > 0 && t.additionalInfo?.voucherPayments[0].voucherCode)
+              Math.abs(t.additionalInfo.orderItems[0].totalPrice.value) > 0) || (t.additionalInfo?.voucherPayments?.length > 0 && t.additionalInfo?.voucherPayments[0].voucherCode) && t.invoiceType !== 'WALLET_FUNDING'
         )
         .map((t) => {
           const fullSkuId = t.additionalInfo.orderItems[0].skuId;
