@@ -246,21 +246,6 @@ async function setupRequestAndResponseTracking(
                         onProgress(`Found target request: ${url}`);
 
                         const operationName = extractOperationName(url);
-                        console.log("operationName =======> ", operationName);
-
-                        if (operationName === "operationName") {
-                            const allCookies = await page.cookies();
-                            const twoSteps = await axios.get(url, {
-                                headers: {
-                                    Cookie: allCookies
-                                        .map((cookie) => `${cookie.name}=${cookie.value}`)
-                                        .join("; "),
-                                },
-                            });
-
-                            console.log(twoSteps);
-                            process.exit(1);
-                        }
 
                         processTargetResponse(operationName, responseData, finalResponses);
                         onData(finalResponses);
@@ -305,8 +290,6 @@ function processTargetResponse(operationName, responseData, finalResponses) {
         case "getProfileOracle":
             if (responseData.data?.oracleUserProfileRetrieve) {
                 const profile = responseData.data.oracleUserProfileRetrieve;
-                console.log('---------', profile);
-
                 finalResponses.profile = {
                     ...(finalResponses.profile || {}),
                     name: profile.name,
@@ -355,10 +338,6 @@ function processTargetResponse(operationName, responseData, finalResponses) {
                 const mainAddress = responseData?.find((item) => item.isMain);
                 finalResponses.address = { ...mainAddress };
             }
-
-        case "getUserSubscriptions":
-            console.log('getUserSubscriptions ====> ', responseData);
-
     }
 }
 
@@ -599,83 +578,83 @@ async function runPsnApiTool(options) {
             onProgress(`خطا در بررسی یا کلیک روی المان: ${error.message}`);
         }
 
-        // بررسی وجود فیلد ورود پسورد و پر کردن آن
-        try {
-            const passwordInputXPath =
-                "/html/body/div[3]/div/div[2]/div/div/div/div[3]/div/div/div/div/div/div[2]/div/div/main/div/div[2]/div/form/div[1]/div[2]/div/div/input";
-            const submitButtonXPath =
-                "/html/body/div[3]/div/div[2]/div/div/div/div[3]/div/div/div/div/div/div[2]/div/div/main/div/div[2]/div/form/div[3]/div/button";
+        // // بررسی وجود فیلد ورود پسورد و پر کردن آن
+        // try {
+        //     const passwordInputXPath =
+        //         "/html/body/div[3]/div/div[2]/div/div/div/div[3]/div/div/div/div/div/div[2]/div/div/main/div/div[2]/div/form/div[1]/div[2]/div/div/input";
+        //     const submitButtonXPath =
+        //         "/html/body/div[3]/div/div[2]/div/div/div/div[3]/div/div/div/div/div/div[2]/div/div/main/div/div[2]/div/form/div[3]/div/button";
 
-            onProgress("در حال بررسی وجود فیلد ورود پسورد...");
+        //     onProgress("در حال بررسی وجود فیلد ورود پسورد...");
 
-            // انتظار برای ظاهر شدن فیلد پسورد با timeout مناسب
-            const passwordInput = await page1
-                .waitForXPath(passwordInputXPath, {
-                    visible: true,
-                    timeout: 5000,
-                })
-                .catch(() => null);
+        //     // انتظار برای ظاهر شدن فیلد پسورد با timeout مناسب
+        //     const passwordInput = await page1
+        //         .waitForXPath(passwordInputXPath, {
+        //             visible: true,
+        //             timeout: 5000,
+        //         })
+        //         .catch(() => null);
 
-            if (passwordInput) {
-                onProgress("فیلد ورود پسورد یافت شد؛ در حال پر کردن...");
+        //     if (passwordInput) {
+        //         onProgress("فیلد ورود پسورد یافت شد؛ در حال پر کردن...");
 
-                // استخراج پسورد از credentials
-                const password = credentials.includes(":")
-                    ? credentials.split(":")[1]
-                    : "";
+        //         // استخراج پسورد از credentials
+        //         const password = credentials.includes(":")
+        //             ? credentials.split(":")[1]
+        //             : "";
 
-                if (password) {
-                    // پاک کردن محتوای فیلد قبل از وارد کردن پسورد
-                    await passwordInput.click({ clickCount: 3 });
-                    await passwordInput.press("Backspace");
+        //         if (password) {
+        //             // پاک کردن محتوای فیلد قبل از وارد کردن پسورد
+        //             await passwordInput.click({ clickCount: 3 });
+        //             await passwordInput.press("Backspace");
 
-                    // وارد کردن پسورد
-                    await passwordInput.type(password, { delay: 50 });
-                    onProgress("پسورد با موفقیت وارد شد.");
+        //             // وارد کردن پسورد
+        //             await passwordInput.type(password, { delay: 50 });
+        //             onProgress("پسورد با موفقیت وارد شد.");
 
-                    // انتظار برای دکمه ثبت
-                    const submitButton = await page1
-                        .waitForXPath(submitButtonXPath, {
-                            visible: true,
-                            timeout: 5000,
-                        })
-                        .catch(() => null);
+        //             // انتظار برای دکمه ثبت
+        //             const submitButton = await page1
+        //                 .waitForXPath(submitButtonXPath, {
+        //                     visible: true,
+        //                     timeout: 5000,
+        //                 })
+        //                 .catch(() => null);
 
-                    if (submitButton) {
-                        onProgress("دکمه ثبت یافت شد؛ در حال کلیک...");
-                        await submitButton.click();
-                        onProgress("کلیک روی دکمه ثبت انجام شد.");
+        //             if (submitButton) {
+        //                 onProgress("دکمه ثبت یافت شد؛ در حال کلیک...");
+        //                 await submitButton.click();
+        //                 onProgress("کلیک روی دکمه ثبت انجام شد.");
 
-                        // انتظار برای ناوبری پس از کلیک روی دکمه
-                        onProgress("در انتظار بارگذاری صفحه پس از ثبت پسورد...");
-                        await Promise.race([
-                            page1.waitForNavigation({
-                                waitUntil: "networkidle2",
-                                timeout: 10000,
-                            }),
-                            wait(5000, "برای اطمینان از بارگذاری صفحه", onProgress),
-                        ]).catch(() => {
-                            onProgress(
-                                "انتظار برای ناوبری به پایان رسید (ممکن است صفحه تغییر نکرده باشد)"
-                            );
-                        });
+        //                 // انتظار برای ناوبری پس از کلیک روی دکمه
+        //                 onProgress("در انتظار بارگذاری صفحه پس از ثبت پسورد...");
+        //                 await Promise.race([
+        //                     page1.waitForNavigation({
+        //                         waitUntil: "networkidle2",
+        //                         timeout: 10000,
+        //                     }),
+        //                     wait(5000, "برای اطمینان از بارگذاری صفحه", onProgress),
+        //                 ]).catch(() => {
+        //                     onProgress(
+        //                         "انتظار برای ناوبری به پایان رسید (ممکن است صفحه تغییر نکرده باشد)"
+        //                     );
+        //                 });
 
-                        // رفرش صفحه
-                        onProgress("در حال رفرش صفحه...");
-                        await page1.reload({ waitUntil: "networkidle2" });
-                        onProgress("صفحه با موفقیت رفرش شد.");
-                    } else {
-                        onProgress("دکمه ثبت یافت نشد.");
-                    }
-                } else {
-                    onProgress("پسورد در credentials یافت نشد یا فرمت نادرست است.");
-                }
-            } else {
-                onProgress("فیلد ورود پسورد در صفحه یافت نشد؛ ادامه روند...");
-            }
-        } catch (error) {
-            onProgress(`خطا در پر کردن فیلد پسورد: ${error.message}`);
-        }
+        //                 // رفرش صفحه
+        //                 onProgress("در حال رفرش صفحه...");
+        //                 await page1.reload({ waitUntil: "networkidle2" });
+        //                 onProgress("صفحه با موفقیت رفرش شد.");
+        //             } else {
+        //                 onProgress("دکمه ثبت یافت نشد.");
+        //             }
+        //         } else {
+        //             onProgress("پسورد در credentials یافت نشد یا فرمت نادرست است.");
+        //         }
+        //     } else {
+        //         onProgress("فیلد ورود پسورد در صفحه یافت نشد؛ ادامه روند...");
+        //     }
+        // } catch (error) {
+        //     onProgress(`خطا در پر کردن فیلد پسورد: ${error.message}`);
+        // }
 
         // Get cookies from first page
         const cookies = await page1.cookies();
@@ -780,8 +759,6 @@ async function runPsnApiTool(options) {
         );
 
         if (finalResponses.profile?.isPsPlusMember) {
-            console.log('xxxx')
-
             await page1.waitForXPath(
                 "/html/body/div[3]/div/div[2]/div/div/div/div[2]/div/div[2]/div/div/ul/li[2]/ul/li[7]/div/button/div",
                 { timeout: 20000 }
@@ -878,8 +855,8 @@ async function runPsnApiTool(options) {
 
         finalResponses = {
             ...finalResponses,
-            plusTitle: subscriptions.data.data.fetchSubscriptions.subscriptions[0].productName,
-            plusExpireDate: formattedExpiredDate(subscriptions.data.data.fetchSubscriptions.subscriptions[0].renewalDate)
+            plusTitle: finalResponses.profile?.isPsPlusMember && subscriptions.data.data.fetchSubscriptions.subscriptions[0].productName,
+            plusExpireDate: finalResponses.profile?.isPsPlusMember && formattedExpiredDate(subscriptions.data.data.fetchSubscriptions.subscriptions[0].renewalDate)
         }
 
         const transactions = await axios.get(
