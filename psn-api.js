@@ -421,7 +421,7 @@ async function navigateToPage(page, url, description, onProgress) {
     onProgress(`Opening ${description} (${url})...`);
     await page.goto(url, {
         waitUntil: "networkidle2",
-        timeout: 10000,
+        timeout: 60000,
     });
     onProgress(`${description} loaded successfully.`);
 }
@@ -500,7 +500,7 @@ async function runPsnApiTool(options) {
 
     // Browser launch options
     const browserOptions = {
-        headless: 'new', // در تولید می‌توانید headless را true کنید
+        headless: false, // در تولید می‌توانید headless را true کنید
         defaultViewport: { width: 1920, height: 1080 },
         args: [
             "--no-sandbox",
@@ -544,7 +544,41 @@ async function runPsnApiTool(options) {
         await navigateToPage(page1, PAGE_CONFIGS.FIRST.url, "صفحه اول", onProgress);
 
         // Wait for first page to fully load and cookies to be set
-        await wait(8000, "تا بارگذاری صفحه اول کامل شود", onProgress);
+        await wait(10000, "تا بارگذاری صفحه اول کامل شود", onProgress);
+
+        // بررسی وجود المان خطا که نشان می‌دهد اکانت قابل کپچر نیست
+        try {
+            const errorElementXPath = "/html/body/div[3]/div/div[2]/div/div/div/div/div[4]/div/div[1]";
+            onProgress(`در حال بررسی وجود المان خطا با XPath: ${errorElementXPath}`);
+
+            // انتظار برای ظاهر شدن المان با timeout کوتاه (اگر وجود داشته باشد)
+            const errorElement = await page1
+                .waitForXPath(errorElementXPath, {
+                    visible: true,
+                    timeout: 5000,
+                })
+                .catch(() => null);
+
+            if (errorElement) {
+                // خواندن متن المان خطا (اختیاری)
+                const errorText = await page1.evaluate(el => el.textContent, errorElement);
+                onProgress(`خطا: اکانت قابل کپچر نیست. ${errorText ? `پیام خطا: ${errorText}` : ''}`);
+                onProgress("این اکانت نیاز به NPSSO جدید دارد.");
+
+                // می‌توانید اینجا کد اضافی برای مدیریت این خطا اضافه کنید
+                // مثلاً می‌توانید یک خطا پرتاب کنید یا مقداری را در finalResponses ذخیره کنید
+                finalResponses.captureError = true;
+                finalResponses.captureErrorMessage = "این اکانت قابل کپچر نیست و نیاز به NPSSO جدید دارد.";
+
+                // اگر می‌خواهید فرآیند را متوقف کنید:
+                onError(new Error("این اکانت قابل کپچر نیست و نیاز به NPSSO جدید دارد."));
+                return; // خروج از تابع
+            } else {
+                onProgress("المان خطا یافت نشد، ادامه پردازش...");
+            }
+        } catch (error) {
+            onProgress(`خطا در بررسی المان خطا: ${error.message}`);
+        }
 
         // بررسی وجود المان مورد نظر و کلیک روی آن
         try {
@@ -556,7 +590,7 @@ async function runPsnApiTool(options) {
             const targetElement = await page1
                 .waitForXPath(targetXPath, {
                     visible: true,
-                    timeout: 6000,
+                    timeout: 8000,
                 })
                 .catch(() => null);
 
@@ -570,9 +604,9 @@ async function runPsnApiTool(options) {
                 await Promise.race([
                     page1.waitForNavigation({
                         waitUntil: "networkidle2",
-                        timeout: 8000,
+                        timeout: 10000,
                     }),
-                    wait(5000, "برای اطمینان از بارگذاری صفحه", onProgress),
+                    wait(6000, "برای اطمینان از بارگذاری صفحه", onProgress),
                 ]).catch(() => {
                     onProgress(
                         "انتظار برای ناوبری به پایان رسید (ممکن است صفحه تغییر نکرده باشد)"
@@ -600,7 +634,7 @@ async function runPsnApiTool(options) {
             const passwordInput = await page1
                 .waitForXPath(passwordInputXPath, {
                     visible: true,
-                    timeout: 4000,
+                    timeout: 5000,
                 })
                 .catch(() => null);
 
@@ -625,7 +659,7 @@ async function runPsnApiTool(options) {
                     const submitButton = await page1
                         .waitForXPath(submitButtonXPath, {
                             visible: true,
-                            timeout: 4000,
+                            timeout: 5000,
                         })
                         .catch(() => null);
 
@@ -639,9 +673,9 @@ async function runPsnApiTool(options) {
                         await Promise.race([
                             page1.waitForNavigation({
                                 waitUntil: "networkidle2",
-                                timeout: 8000,
+                                timeout: 10000,
                             }),
-                            wait(8000, "برای اطمینان از بارگذاری صفحه", onProgress),
+                            wait(10000, "برای اطمینان از بارگذاری صفحه", onProgress),
                         ]).catch(() => {
                             onProgress(
                                 "انتظار برای ناوبری به پایان رسید (ممکن است صفحه تغییر نکرده باشد)"
@@ -675,7 +709,7 @@ async function runPsnApiTool(options) {
                             await navigateToPage(page1, PAGE_CONFIGS.FIRST.url, "صفحه اول (با NPSSO جدید)", onProgress);
 
                             // Wait for the page to fully load
-                            await wait(8000, "برای اطمینان از بارگذاری صفحه با NPSSO جدید", onProgress);
+                            await wait(10000, "برای اطمینان از بارگذاری صفحه با NPSSO جدید", onProgress);
                         } else {
                             onProgress("NPSSO جدید دریافت نشد، ادامه با NPSSO فعلی...");
                         }
@@ -708,7 +742,7 @@ async function runPsnApiTool(options) {
             onProgress("در حال تلاش برای کلیک روی عنصر مشخص...");
             await page1.waitForXPath(
                 "/html/body/div[3]/div/div[2]/div/div/div/div[2]/div/div[2]/div/div/ul/li[1]/ul/li[2]/div",
-                { timeout: 10000 }
+                { timeout: 20000 }
             );
             const [element] = await page1.$x(
                 "/html/body/div[3]/div/div[2]/div/div/div/div[2]/div/div[2]/div/div/ul/li[1]/ul/li[2]/div"
@@ -726,7 +760,7 @@ async function runPsnApiTool(options) {
                     await page1
                         .waitForNavigation({
                             waitUntil: "networkidle2",
-                            timeout: 8000,
+                            timeout: 10000,
                         })
                         .catch(() => {
                             onProgress("ناوبری رخ نداد یا قبلاً انجام شده است.");
@@ -737,7 +771,7 @@ async function runPsnApiTool(options) {
                     );
                     await page1
                         .waitForXPath('//*[@id="ember138"]/div/div/div/div[1]/div', {
-                            timeout: 4000,
+                            timeout: 5000,
                         })
                         .catch((e) => {
                             onProgress(
@@ -798,7 +832,7 @@ async function runPsnApiTool(options) {
         if (finalResponses.profile?.isPsPlusMember) {
             await page1.waitForXPath(
                 "/html/body/div[3]/div/div[2]/div/div/div/div[2]/div/div[2]/div/div/ul/li[2]/ul/li[7]/div/button/div",
-                { timeout: 10000 }
+                { timeout: 20000 }
             );
             const [button1] = await page1.$x(
                 "/html/body/div[3]/div/div[2]/div/div/div/div[2]/div/div[2]/div/div/ul/li[2]/ul/li[7]/div/button/div"
@@ -815,7 +849,7 @@ async function runPsnApiTool(options) {
 
             await page1.waitForXPath(
                 "/html/body/div[3]/div/div[2]/div/div/div/div[3]/div/div/div[3]/div[3]/main/div/div[4]/div[3]",
-                { timeout: 10000 }
+                { timeout: 20000 }
             );
             const [button2] = await page1.$x(
                 "/html/body/div[3]/div/div[2]/div/div/div/div[3]/div/div/div[3]/div[3]/main/div/div[4]/div[3]"
@@ -832,7 +866,7 @@ async function runPsnApiTool(options) {
 
             onProgress(`دکمه پیدا شد، در حال کلیک...`);
 
-            await wait(3000, " پردازش", onProgress);
+            await wait(5000, " پردازش", onProgress);
         }
 
         onProgress("دریافت کوکی‌های نهایی از تمامی صفحات...");
@@ -951,7 +985,7 @@ async function runPsnApiTool(options) {
                 .join("\n"),
         };
 
-        const pythonProcess = spawn("python3", ["get_devices.py", finalResponses?.newNpsso || npsso]);
+        const pythonProcess = spawn("python3", ["get_devices.py", finalResponses.newNpsso || npsso]);
 
         let result = "";
         let error = "";
