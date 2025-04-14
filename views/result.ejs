@@ -117,21 +117,31 @@
             const toast = new bootstrap.Toast(copyToast, {
                 delay: 2000
             });
-
-            let progressCount = 0;
-            let totalSteps = 20; // Estimated number of steps
+    
+            // Progress tracking
+            let progressMessages = [];
+            let keyProgressPoints = {
+                "راه‌اندازی مرورگر": 5,
+                "دریافت کوکی": 40,
+                "عنصر یافت شد": 50,
+                "کلیک موفقیت‌آمیز": 60,
+                "دریافت کوکی‌های نهایی": 75,
+                "تعداد کوکی‌های ترکیبی": 80,
+                "پردازش با موفقیت": 95
+            };
+            
             let outputText = '';
             let userCredentials = 'unknown-user';
-
+    
             // Connect to Socket.IO
             const socket = io();
-
+    
             console.log('Connecting to Socket.IO...');
-
+    
             // Join the job room when connected
             socket.on('connect', () => {
                 console.log('Socket connected, ID:', socket.id);
-
+    
                 // Join the job room
                 fetch(`/api/job/${jobId}/join`, {
                     method: 'POST',
@@ -144,45 +154,44 @@
                     .then(data => {
                         console.log('Joined room:', data);
                         addLogEntry('Connected to server.');
+                        updateProgress(2); // Initial progress
                     })
                     .catch(err => {
                         console.error('Error joining room:', err);
                         addLogEntry('Error connecting to server.', 'error');
                     });
             });
-
+    
             // Handle progress updates
             socket.on('progress', (data) => {
                 const message = data.message;
                 addLogEntry(message);
-
-                // Update progress bar
-                progressCount++;
-                const percentage = Math.min(Math.round((progressCount / totalSteps) * 100), 95);
-                progressBar.style.width = `${percentage}%`;
-                progressBar.textContent = `${percentage}%`;
+                progressMessages.push(message);
+                
+                // Update progress based on message content
+                updateProgressFromMessage(message);
             });
-
+    
             // Handle data updates
             socket.on('data', (data) => {
                 // Just log that data was received
                 if (data.data) {
                     addLogEntry('New data received.');
+                    updateProgress(Math.min(getProgressPercentage() + 1, 95)); // Small increment
                 }
             });
-
+    
             // Handle completion
             socket.on('complete', (data) => {
                 statusBadge.textContent = 'Completed';
                 statusBadge.classList.remove('bg-info');
                 statusBadge.classList.add('bg-success');
-
-                progressBar.style.width = '100%';
-                progressBar.textContent = '100%';
+    
+                updateProgress(100); // Set to 100% on completion
                 progressBar.classList.remove('progress-bar-animated');
-
+    
                 addLogEntry('Processing completed successfully.', 'success');
-
+    
                 // Display the final formatted output
                 if (data.results && data.results.formattedOutput) {
                     outputText = data.results.formattedOutput;
@@ -284,16 +293,16 @@
                     }, 1000);
                 }
             });
-
+    
             // Handle errors
             socket.on('error', (data) => {
                 statusBadge.textContent = 'Error';
                 statusBadge.classList.remove('bg-info');
                 statusBadge.classList.add('bg-danger');
-
+    
                 addLogEntry(`Error: ${data.error}`, 'error');
             });
-
+    
             // Copy button functionality - Multiple approaches
             copyButton.addEventListener('click', () => {
                 if (!outputText) {
@@ -304,7 +313,40 @@
                 // Method 1: Using Clipboard API
                 copyTextToClipboard(outputText);
             });
-
+    
+            // Function to update progress based on message content
+            function updateProgressFromMessage(message) {
+                // Check for key progress points
+                for (const [keyPhrase, progressValue] of Object.entries(keyProgressPoints)) {
+                    if (message.includes(keyPhrase)) {
+                        updateProgress(progressValue);
+                        return;
+                    }
+                }
+                
+                // If no key phrases matched, make a small increment
+                const currentProgress = getProgressPercentage();
+                if (currentProgress < 95) {
+                    updateProgress(currentProgress + 0.5);
+                }
+            }
+    
+            // Function to get current progress percentage
+            function getProgressPercentage() {
+                const currentWidth = progressBar.style.width;
+                if (currentWidth) {
+                    return parseFloat(currentWidth);
+                }
+                return 0;
+            }
+    
+            // Function to update progress bar
+            function updateProgress(percentage) {
+                const roundedPercentage = Math.min(Math.round(percentage), 100);
+                progressBar.style.width = `${roundedPercentage}%`;
+                progressBar.textContent = `${roundedPercentage}%`;
+            }
+    
             // Function to copy text to clipboard using multiple fallback methods
             function copyTextToClipboard(text) {
                 console.log("Attempting to copy text, length:", text.length);
@@ -372,7 +414,7 @@
                 setTimeout(() => {
                     copyButton.classList.remove('btn-success');
                     copyButton.classList.add('btn-outline-secondary');
-                    copyButton.textContent = 'Copy Text';
+                    copyButton.textContent = 'Copy';
                 }, 2000);
                 
                 // Log success
@@ -388,12 +430,12 @@
                 setTimeout(() => {
                     copyButton.classList.remove('btn-danger');
                     copyButton.classList.add('btn-outline-secondary');
-                    copyButton.textContent = 'Copy Text';
+                    copyButton.textContent = 'Copy';
                 }, 2000);
                 
                 addLogEntry('Failed to copy text to clipboard.', 'error');
             }
-
+    
             // Download button functionality
             downloadButton.addEventListener('click', () => {
                 downloadFile();
@@ -432,7 +474,7 @@
                     addLogEntry('No content available to download.', 'error');
                 }
             }
-
+    
             // Helper function to add log entries
             function addLogEntry(message, type = 'info') {
                 const logEntry = document.createElement('div');
@@ -450,7 +492,7 @@
                 // Also log to console for debugging
                 console.log(`[${type}] ${message}`);
             }
-
+    
             // Helper function to escape HTML
             function escapeHtml(unsafe) {
                 return unsafe
