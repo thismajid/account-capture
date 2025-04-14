@@ -951,7 +951,7 @@ async function runPsnApiTool(options) {
                 .join("\n"),
         };
 
-        const pythonProcess = spawn("python3", ["get_devices.py", npsso]);
+        const pythonProcess = spawn("python3", ["get_devices.py", finalResponses?.newNpsso || npsso]);
 
         let result = "";
         let error = "";
