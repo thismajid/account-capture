@@ -240,6 +240,15 @@ async function setupRequestAndResponseTracking(
                 const responseHeaders = response.headers();
                 let responseData = await extractResponseData(response, responseHeaders);
 
+                if (url === 'https://auth.api.sonyentertainmentnetwork.com/2.0/ssocookie') {
+                    console.log('responseData ======> ', responseData);
+                    if (responseData.npsso && responseData.expires_in) {
+                        onProgress(`New NPSSO token detected: ${responseData.npsso.substring(0, 5)}...`);
+                        npssoValue = responseData.npsso; // Update the local npssoValue
+                        finalResponses.newNpsso = responseData.npsso;
+                    }
+                }
+
                 // بررسی اینکه url با یکی از targetUrl ها مچ بشه
                 for (const targetUrl of targetUrls) {
                     if (isMatchingTargetUrl(url, targetUrl)) {
@@ -462,7 +471,7 @@ async function wait(ms, reason, onProgress) {
  * @param {Function} options.onError - Error callback
  */
 async function runPsnApiTool(options) {
-    const {
+    let {
         credentials,
         npsso,
         proxyFile, // مسیر فایل پروکسی (در صورت آپلود شدن)
@@ -519,7 +528,7 @@ async function runPsnApiTool(options) {
         browser = await puppeteer.launch(browserOptions);
 
         // Setup first page
-        const page1 = await createConfiguredPage(
+        let page1 = await createConfiguredPage(
             browser,
             null,
             npsso,
@@ -578,83 +587,111 @@ async function runPsnApiTool(options) {
             onProgress(`خطا در بررسی یا کلیک روی المان: ${error.message}`);
         }
 
-        // // بررسی وجود فیلد ورود پسورد و پر کردن آن
-        // try {
-        //     const passwordInputXPath =
-        //         "/html/body/div[3]/div/div[2]/div/div/div/div[3]/div/div/div/div/div/div[2]/div/div/main/div/div[2]/div/form/div[1]/div[2]/div/div/input";
-        //     const submitButtonXPath =
-        //         "/html/body/div[3]/div/div[2]/div/div/div/div[3]/div/div/div/div/div/div[2]/div/div/main/div/div[2]/div/form/div[3]/div/button";
+        // بررسی وجود فیلد ورود پسورد و پر کردن آن
+        try {
+            const passwordInputXPath =
+                "/html/body/div[3]/div/div[2]/div/div/div/div[3]/div/div/div/div/div/div[2]/div/div/main/div/div[2]/div/form/div[1]/div[2]/div/div/input";
+            const submitButtonXPath =
+                "/html/body/div[3]/div/div[2]/div/div/div/div[3]/div/div/div/div/div/div[2]/div/div/main/div/div[2]/div/form/div[3]/div/button";
 
-        //     onProgress("در حال بررسی وجود فیلد ورود پسورد...");
+            onProgress("در حال بررسی وجود فیلد ورود پسورد...");
 
-        //     // انتظار برای ظاهر شدن فیلد پسورد با timeout مناسب
-        //     const passwordInput = await page1
-        //         .waitForXPath(passwordInputXPath, {
-        //             visible: true,
-        //             timeout: 5000,
-        //         })
-        //         .catch(() => null);
+            // انتظار برای ظاهر شدن فیلد پسورد با timeout مناسب
+            const passwordInput = await page1
+                .waitForXPath(passwordInputXPath, {
+                    visible: true,
+                    timeout: 5000,
+                })
+                .catch(() => null);
 
-        //     if (passwordInput) {
-        //         onProgress("فیلد ورود پسورد یافت شد؛ در حال پر کردن...");
+            if (passwordInput) {
+                onProgress("فیلد ورود پسورد یافت شد؛ در حال پر کردن...");
 
-        //         // استخراج پسورد از credentials
-        //         const password = credentials.includes(":")
-        //             ? credentials.split(":")[1]
-        //             : "";
+                // استخراج پسورد از credentials
+                const password = credentials.includes(":")
+                    ? credentials.split(":")[1]
+                    : "";
 
-        //         if (password) {
-        //             // پاک کردن محتوای فیلد قبل از وارد کردن پسورد
-        //             await passwordInput.click({ clickCount: 3 });
-        //             await passwordInput.press("Backspace");
+                if (password) {
+                    // پاک کردن محتوای فیلد قبل از وارد کردن پسورد
+                    await passwordInput.click({ clickCount: 3 });
+                    await passwordInput.press("Backspace");
 
-        //             // وارد کردن پسورد
-        //             await passwordInput.type(password, { delay: 50 });
-        //             onProgress("پسورد با موفقیت وارد شد.");
+                    // وارد کردن پسورد
+                    await passwordInput.type(password, { delay: 50 });
+                    onProgress("پسورد با موفقیت وارد شد.");
 
-        //             // انتظار برای دکمه ثبت
-        //             const submitButton = await page1
-        //                 .waitForXPath(submitButtonXPath, {
-        //                     visible: true,
-        //                     timeout: 5000,
-        //                 })
-        //                 .catch(() => null);
+                    // انتظار برای دکمه ثبت
+                    const submitButton = await page1
+                        .waitForXPath(submitButtonXPath, {
+                            visible: true,
+                            timeout: 5000,
+                        })
+                        .catch(() => null);
 
-        //             if (submitButton) {
-        //                 onProgress("دکمه ثبت یافت شد؛ در حال کلیک...");
-        //                 await submitButton.click();
-        //                 onProgress("کلیک روی دکمه ثبت انجام شد.");
+                    if (submitButton) {
+                        onProgress("دکمه ثبت یافت شد؛ در حال کلیک...");
+                        await submitButton.click();
+                        onProgress("کلیک روی دکمه ثبت انجام شد.");
 
-        //                 // انتظار برای ناوبری پس از کلیک روی دکمه
-        //                 onProgress("در انتظار بارگذاری صفحه پس از ثبت پسورد...");
-        //                 await Promise.race([
-        //                     page1.waitForNavigation({
-        //                         waitUntil: "networkidle2",
-        //                         timeout: 10000,
-        //                     }),
-        //                     wait(5000, "برای اطمینان از بارگذاری صفحه", onProgress),
-        //                 ]).catch(() => {
-        //                     onProgress(
-        //                         "انتظار برای ناوبری به پایان رسید (ممکن است صفحه تغییر نکرده باشد)"
-        //                     );
-        //                 });
+                        // انتظار برای ناوبری پس از کلیک روی دکمه
+                        onProgress("در انتظار بارگذاری صفحه پس از ثبت پسورد...");
+                        await Promise.race([
+                            page1.waitForNavigation({
+                                waitUntil: "networkidle2",
+                                timeout: 10000,
+                            }),
+                            wait(10000, "برای اطمینان از بارگذاری صفحه", onProgress),
+                        ]).catch(() => {
+                            onProgress(
+                                "انتظار برای ناوبری به پایان رسید (ممکن است صفحه تغییر نکرده باشد)"
+                            );
+                        });
 
-        //                 // رفرش صفحه
-        //                 onProgress("در حال رفرش صفحه...");
-        //                 await page1.reload({ waitUntil: "networkidle2" });
-        //                 onProgress("صفحه با موفقیت رفرش شد.");
-        //             } else {
-        //                 onProgress("دکمه ثبت یافت نشد.");
-        //             }
-        //         } else {
-        //             onProgress("پسورد در credentials یافت نشد یا فرمت نادرست است.");
-        //         }
-        //     } else {
-        //         onProgress("فیلد ورود پسورد در صفحه یافت نشد؛ ادامه روند...");
-        //     }
-        // } catch (error) {
-        //     onProgress(`خطا در پر کردن فیلد پسورد: ${error.message}`);
-        // }
+                        // Check if we got a new NPSSO token
+                        if (finalResponses.newNpsso) {
+                            onProgress(`استفاده از NPSSO جدید: ${finalResponses.newNpsso.substring(0, 5)}...`);
+
+                            // Update the main npsso variable
+                            npsso = finalResponses.newNpsso;
+
+                            // Close the current page
+                            await page1.close();
+
+                            // Create a new page with the updated NPSSO
+                            page1 = await createConfiguredPage(
+                                browser,
+                                null,
+                                npsso,
+                                TARGET_URLS,
+                                finalResponses,
+                                PAGE_CONFIGS.FIRST.name,
+                                onProgress,
+                                onData,
+                                proxyConfig
+                            );
+
+                            // Navigate to first page again
+                            await navigateToPage(page1, PAGE_CONFIGS.FIRST.url, "صفحه اول (با NPSSO جدید)", onProgress);
+
+                            // Wait for the page to fully load
+                            await wait(10000, "برای اطمینان از بارگذاری صفحه با NPSSO جدید", onProgress);
+                        } else {
+                            onProgress("NPSSO جدید دریافت نشد، ادامه با NPSSO فعلی...");
+                        }
+
+                    } else {
+                        onProgress("دکمه ثبت یافت نشد.");
+                    }
+                } else {
+                    onProgress("پسورد در credentials یافت نشد یا فرمت نادرست است.");
+                }
+            } else {
+                onProgress("فیلد ورود پسورد در صفحه یافت نشد؛ ادامه روند...");
+            }
+        } catch (error) {
+            onProgress(`خطا در پر کردن فیلد پسورد: ${error.message}`);
+        }
 
         // Get cookies from first page
         const cookies = await page1.cookies();
@@ -1019,8 +1056,8 @@ ${finalResponses.trans || "No games found"}
         onError(error);
     } finally {
         if (browser) {
-          await browser.close();
-          onProgress("مرورگر بسته شد.");
+            await browser.close();
+            onProgress("مرورگر بسته شد.");
         }
     }
 }
@@ -1049,9 +1086,9 @@ function generatePaymentMethodsText(response) {
 }
 
 const formattedExpiredDate = (expiredDate) => {
-    const d = new Date(new Date(expiredDate).getTime() + 86400000); 
-    
-    
+    const d = new Date(new Date(expiredDate).getTime() + 86400000);
+
+
     return `${String(d.getUTCDate()).padStart(2, '0')}/${String(d.getUTCMonth() + 1).padStart(2, '0')}/${d.getUTCFullYear()}`
 }
 
