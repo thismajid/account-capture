@@ -22,21 +22,36 @@
                     </div>
                     <div class="card-body">
                         <form action="/run-tool" method="post" enctype="multipart/form-data">
-                            <div class="mb-3">
-                                <label for="credentials" class="form-label">Email:Password</label>
-                                <input type="text" class="form-control" id="credentials" name="credentials"
-                                    placeholder="example@email.com:password123" required>
-                                <div class="form-text">
-                                    Please enter your email and password in the format email:password
+                            <div id="singleAccountFields">
+                                <div class="mb-3">
+                                    <label for="credentials" class="form-label">Email:Password</label>
+                                    <input type="text" class="form-control" id="credentials" name="credentials"
+                                        placeholder="example@email.com:password123" required>
+                                    <div class="form-text">
+                                        Please enter your email and password in the format email:password
+                                    </div>
+                                </div>
+                                <div class="mb-3">
+                                    <label for="npsso" class="form-label">NPSSO Code</label>
+                                    <input type="text" class="form-control" id="npsso" name="npsso" required>
+                                    <div class="form-text">
+                                        Get the NPSSO code from your browser cookies
+                                    </div>
                                 </div>
                             </div>
-                            <div class="mb-3">
-                                <label for="npsso" class="form-label">NPSSO Code</label>
-                                <input type="text" class="form-control" id="npsso" name="npsso" required>
-                                <div class="form-text">
-                                    Get the NPSSO code from your browser cookies
+
+                            <div id="batchFileField" style="display: none;">
+                                <div class="mb-3">
+                                    <label for="accountFile" class="form-label">Account List File</label>
+                                    <input type="file" class="form-control" id="accountFile" name="accountFile"
+                                        accept=".txt">
+                                    <div class="form-text">
+                                        Upload a text file with format: Email:pass and NPSSO per account, separated by
+                                        lines like in the example.
+                                    </div>
                                 </div>
                             </div>
+
                             <div class="mb-3">
                                 <label for="proxyFile" class="form-label">Proxy File (Optional)</label>
                                 <input type="file" class="form-control" id="proxyFile" name="proxyFile">
@@ -45,7 +60,8 @@
                                 </div>
                             </div>
                             <div class="mb-3 form-check">
-                                <input type="checkbox" class="form-check-input" id="useProxy" name="useProxy" value="false">
+                                <input type="checkbox" class="form-check-input" id="useProxy" name="useProxy"
+                                    value="true">
                                 <label class="form-check-label" for="useProxy">Use Proxy</label>
                                 <div class="form-text">
                                     Check this to use a proxy for the request (if available)
@@ -53,11 +69,40 @@
                             </div>
                             <button type="submit" class="btn btn-primary">Start</button>
                         </form>
+                        <hr class="my-4">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <span class="text-muted">Need to process multiple accounts?</span>
+                            <a href="/batch" class="btn btn-outline-primary">
+                                <i class="fas fa-tasks me-1"></i> Batch Processing
+                            </a>
+                        </div>
                     </div>
                 </div>
             </div>
         </div>
     </div>
+
+    <script>
+        function toggleInputFields() {
+            const singleAccountFields = document.getElementById('singleAccountFields');
+            const batchFileField = document.getElementById('batchFileField');
+            const singleRadio = document.getElementById('singleAccount');
+
+            if (singleRadio.checked) {
+                singleAccountFields.style.display = 'block';
+                batchFileField.style.display = 'none';
+                document.getElementById('credentials').required = true;
+                document.getElementById('npsso').required = true;
+                document.getElementById('accountFile').required = false;
+            } else {
+                singleAccountFields.style.display = 'none';
+                batchFileField.style.display = 'block';
+                document.getElementById('credentials').required = false;
+                document.getElementById('npsso').required = false;
+                document.getElementById('accountFile').required = true;
+            }
+        }
+    </script>
 </body>
 
 </html>

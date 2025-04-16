@@ -1,0 +1,937 @@
+<!-- views/batch-result.ejs -->
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Batch Processing Results</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.5/dist/css/bootstrap.min.css">
+    <link rel="stylesheet" href="/css/style.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <style>
+        .log-container {
+            max-height: 300px;
+            overflow-y: auto;
+            background-color: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 0.25rem;
+            padding: 0.75rem;
+            font-family: monospace;
+            font-size: 0.875rem;
+        }
+
+        .account-card {
+            transition: all 0.3s ease;
+        }
+
+        .account-card.completed {
+            border-left: 5px solid #198754;
+        }
+
+        .account-card.error {
+            border-left: 5px solid #dc3545;
+        }
+
+        .account-card.processing {
+            border-left: 5px solid #0d6efd;
+        }
+
+        .account-card.waiting {
+            border-left: 5px solid #6c757d;
+        }
+
+        .toast-container {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 1050;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container-fluid mt-4 mb-5">
+        <div class="row justify-content-center">
+            <div class="col-md-10">
+                <div class="card shadow">
+                    <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
+                        <h1 class="h4 mb-0">Batch Processing Results</h1>
+                        <div>
+                            <span id="overall-progress-text" class="badge bg-info me-2">0/0 Completed</span>
+                            <span id="status-badge" class="badge bg-info">Processing</span>
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        <div class="mb-3">
+                            <h5>Overall Progress</h5>
+                            <div class="progress mb-2">
+                                <div id="overall-progress-bar"
+                                    class="progress-bar progress-bar-striped progress-bar-animated" style="width: 0%">
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="mb-3">
+                            <div class="d-flex justify-content-between align-items-center mb-2">
+                                <h5>Global Log</h5>
+                                <button id="download-all-button" class="btn btn-sm btn-success">
+                                    <i class="fas fa-download me-1"></i> Download All Results
+                                </button>
+                            </div>
+                            <div id="global-log" class="log-container mb-3">
+                                <div class="text-muted">Initializing batch processing...</div>
+                            </div>
+                        </div>
+
+                        <div class="mb-3">
+                            <h5>Accounts</h5>
+                            <div id="accounts-container">
+                                <!-- Account cards will be dynamically added here -->
+                                <div class="text-center text-muted py-5">
+                                    <div class="spinner-border spinner-border-sm me-2" role="status"></div>
+                                    Loading accounts...
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="mb-3" id="failed-accounts-section" style="display: none;">
+                            <div class="d-flex justify-content-between align-items-center mb-2">
+                                <h5>Failed Accounts</h5>
+                                <button id="download-failed-button" class="btn btn-sm btn-outline-danger">
+                                    <i class="fas fa-download me-1"></i> Download Failed Accounts
+                                </button>
+                            </div>
+                            <div class="alert alert-danger">
+                                <pre id="failed-accounts-content" class="mb-0" style="white-space: pre-wrap;"></pre>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="card-footer">
+                        <a href="/" class="btn btn-secondary">Back to Home</a>
+                        <a href="/batch" class="btn btn-primary ms-2">New Batch</a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast notification for copy/download feedback -->
+    <div class="toast-container">
+        <div id="notification-toast" class="toast align-items-center text-white bg-success" role="alert"
+            aria-live="assertive" aria-atomic="true">
+            <div class="d-flex">
+                <div class="toast-body">
+                    Operation successful!
+                </div>
+                <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"
+                    aria-label="Close"></button>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.5/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const batchId = '<%= batchId %>';
+            const statusBadge = document.getElementById('status-badge');
+            const overallProgressBar = document.getElementById('overall-progress-bar');
+            const overallProgressText = document.getElementById('overall-progress-text');
+            const globalLog = document.getElementById('global-log');
+            const accountsContainer = document.getElementById('accounts-container');
+            const failedAccountsSection = document.getElementById('failed-accounts-section');
+            const failedAccountsContent = document.getElementById('failed-accounts-content');
+            const downloadAllButton = document.getElementById('download-all-button');
+            const downloadFailedButton = document.getElementById('download-failed-button');
+            const notificationToast = document.getElementById('notification-toast');
+
+            // Initialize Bootstrap toast
+            const toast = new bootstrap.Toast(notificationToast, {
+                delay: 3000
+            });
+
+            // State management
+            const state = {
+                accounts: [],
+                completedCount: 0,
+                errorCount: 0,
+                failedAccounts: [],
+                allResults: {},
+                processingCompleted: false,
+                downloadedAccounts: new Set() // برای ردیابی اکانت‌هایی که قبلاً دانلود شده‌اند
+            };
+
+            // Connect to Socket.IO
+            const socket = io();
+
+            console.log('Connecting to Socket.IO for batch processing...');
+
+            // Join the batch room when connected
+            socket.on('connect', () => {
+                console.log('Socket connected, ID:', socket.id);
+
+                // Join the batch room
+                fetch(`/api/batch/${batchId}/join`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ socketId: socket.id })
+                })
+                    .then(response => response.json())
+                    .then(data => {
+                        console.log('Joined batch room:', data);
+                        addGlobalLogEntry('Connected to server.');
+                    })
+                    .catch(err => {
+                        console.error('Error joining batch room:', err);
+                        addGlobalLogEntry('Error connecting to server.', 'error');
+                    });
+            });
+
+            // Handle batch initialization
+            socket.on('batch-init', (data) => {
+                console.log('Batch initialized:', data);
+                state.accounts = data.accounts;
+
+                // Update UI with account information
+                updateAccountsUI();
+
+                addGlobalLogEntry(`Batch processing started with ${data.accounts.length} accounts.`);
+                updateOverallProgress();
+            });
+
+            // در انتهای تابع updateAccountsUI() بعد از اضافه کردن event listener برای دکمه‌های دانلود:
+            document.querySelectorAll('.copy-button').forEach(button => {
+                button.addEventListener('click', (e) => {
+                    const index = parseInt(e.currentTarget.getAttribute('data-index'));
+                    copyAccountResult(index);
+                });
+            });
+
+            // این تابع را به اسکریپت اضافه کنید
+            function copyAccountResult(index) {
+                console.log(`Attempting to copy account ${index} result to clipboard`);
+
+                // Get the result data
+                const result = state.allResults[index];
+                if (!result || !result.formattedOutput) {
+                    alert(`No result content available for account ${index + 1}`);
+                    console.error(`No result available for account ${index}`);
+                    return false;
+                }
+
+                // Get content
+                const content = result.formattedOutput;
+
+                try {
+                    // Use the Clipboard API to copy text
+                    navigator.clipboard.writeText(content).then(() => {
+                        console.log('Content copied to clipboard');
+                        addGlobalLogEntry(`Account ${index + 1} result copied to clipboard.`, 'success');
+                        showNotification('Result copied to clipboard!');
+                    }).catch(err => {
+                        console.error('Failed to copy: ', err);
+                        // Fallback method for older browsers
+                        fallbackCopyTextToClipboard(content);
+                    });
+                    return true;
+                } catch (err) {
+                    console.error('Error in copyAccountResult:', err);
+                    // Try fallback method
+                    return fallbackCopyTextToClipboard(content);
+                }
+            }
+
+            // Fallback method for browsers that don't support clipboard API
+            function fallbackCopyTextToClipboard(text) {
+                console.log('Using fallback method to copy to clipboard');
+                try {
+                    const textArea = document.createElement('textarea');
+                    textArea.value = text;
+
+                    // Make the textarea out of viewport
+                    textArea.style.position = 'fixed';
+                    textArea.style.left = '-999999px';
+                    textArea.style.top = '-999999px';
+                    document.body.appendChild(textArea);
+
+                    textArea.focus();
+                    textArea.select();
+
+                    const successful = document.execCommand('copy');
+                    document.body.removeChild(textArea);
+
+                    if (successful) {
+                        console.log('Fallback: Copying text command was successful');
+                        addGlobalLogEntry('Result copied to clipboard using fallback method.', 'success');
+                        showNotification('Result copied to clipboard!');
+                        return true;
+                    } else {
+                        console.error('Fallback: Could not copy text');
+                        addGlobalLogEntry('Failed to copy result to clipboard.', 'error');
+                        showNotification('Failed to copy result', 'danger');
+                        return false;
+                    }
+                } catch (err) {
+                    console.error('Fallback: Oops, unable to copy', err);
+                    addGlobalLogEntry(`Error copying to clipboard: ${err.message}`, 'error');
+                    showNotification('Failed to copy result', 'danger');
+                    return false;
+                }
+            }
+
+            // Handle account processing start
+            socket.on('account-start', (data) => {
+                const { index, credentials } = data;
+                addGlobalLogEntry(`Started processing account ${index + 1}: ${credentials}`);
+                updateAccountStatus(index, 'processing');
+            });
+
+            // Handle progress updates for a specific account
+            socket.on('account-progress', (data) => {
+                const { index, message } = data;
+                addAccountLogEntry(index, message);
+            });
+
+            // Handle account completion
+            socket.on('account-complete', (data) => {
+                const { index, results } = data;
+                state.completedCount++;
+                state.allResults[index] = results;
+
+                addGlobalLogEntry(`Completed processing account ${index + 1}: ${results.credentials}`, 'success');
+                updateAccountStatus(index, 'completed', results);
+                updateOverallProgress();
+
+                // دانلود خودکار نتیجه اکانت موفق با هر دو روش
+                if (results && results.formattedOutput && !state.downloadedAccounts.has(index)) {
+                    console.log(`Triggering automatic download for account ${index + 1}`);
+
+                    // اول روش Blob را امتحان می‌کنیم
+                    setTimeout(() => {
+                        try {
+                            const success = downloadAccountResult(index);
+                            if (success) {
+                                state.downloadedAccounts.add(index);
+                                addGlobalLogEntry(`Account ${index + 1} result downloaded with Blob method.`, 'success');
+                            } else {
+                                // اگر روش اول شکست خورد، روش دوم را امتحان می‌کنیم
+                                console.log('First download method failed, trying alternative method...');
+                                setTimeout(() => {
+                                    const altSuccess = downloadUsingDataURI(index);
+                                    if (altSuccess) {
+                                        state.downloadedAccounts.add(index);
+                                        addGlobalLogEntry(`Account ${index + 1} result downloaded with Data URI method.`, 'success');
+                                    } else {
+                                        addGlobalLogEntry(`All download methods failed for account ${index + 1}.`, 'error');
+                                    }
+                                }, 1000);
+                            }
+                        } catch (error) {
+                            console.error('Error during automatic download:', error);
+                            addGlobalLogEntry(`Download error: ${error.message}`, 'error');
+                        }
+                    }, 1500);
+                }
+
+                // Check if all accounts are processed
+                checkBatchCompletion();
+            });
+            // Handle account error
+            socket.on('account-error', (data) => {
+                const { index, error, credentials, npsso } = data;
+                state.errorCount++;
+
+                // Add to failed accounts list
+                state.failedAccounts.push({ credentials, npsso, error });
+
+                addGlobalLogEntry(`Error processing account ${index + 1}: ${credentials} - ${error}`, 'error');
+                updateAccountStatus(index, 'error', { error });
+                updateOverallProgress();
+
+                // Update failed accounts section
+                updateFailedAccountsSection();
+
+                // Check if all accounts are processed
+                checkBatchCompletion();
+            });
+
+            // Handle batch completion
+            socket.on('batch-complete', (data) => {
+                console.log('Received batch-complete event:', data);
+
+                statusBadge.textContent = 'Completed';
+                statusBadge.classList.remove('bg-info');
+                statusBadge.classList.add('bg-success');
+
+                overallProgressBar.classList.remove('progress-bar-animated');
+                overallProgressBar.style.width = '100%';
+
+                addGlobalLogEntry('Batch processing completed successfully.', 'success');
+
+                state.processingCompleted = true;
+
+                // اگر اطلاعات اکانت‌های ناموفق ارسال شده باشد، آن‌ها را ذخیره می‌کنیم
+                if (data.failedAccounts && data.failedAccounts.length > 0) {
+                    state.failedAccounts = data.failedAccounts;
+                    updateFailedAccountsSection();
+                }
+
+                // اجرای دانلود‌های باقیمانده بعد از تکمیل پردازش
+                performDownloads();
+            });
+
+            // Handle batch error
+            socket.on('batch-error', (data) => {
+                statusBadge.textContent = 'Error';
+                statusBadge.classList.remove('bg-info');
+                statusBadge.classList.add('bg-danger');
+
+                addGlobalLogEntry(`Batch error: ${data.error}`, 'error');
+            });
+
+            // Function to update the accounts UI
+            function updateAccountsUI() {
+                accountsContainer.innerHTML = '';
+
+                state.accounts.forEach((account, index) => {
+                    const card = document.createElement('div');
+                    card.className = 'card account-card waiting mb-3';
+                    card.id = `account-${index}`;
+
+                    card.innerHTML = `
+                        <div class="card-header d-flex justify-content-between align-items-center">
+                            <h6 class="mb-0">Account ${index + 1}: ${account.credentials.split(':')[0]}</h6>
+                            <span class="badge bg-secondary" id="account-status-${index}">Waiting</span>
+                        </div>
+                        <div class="card-body">
+                            <div class="progress mb-2">
+                                <div id="progress-bar-${index}" class="progress-bar" style="width: 0%"></div>
+                            </div>
+                            <div class="log-container" id="account-log-${index}" style="max-height: 150px;">
+                                <div class="text-muted">Waiting to start processing...</div>
+                            </div>
+                        </div>
+                        <div class="card-footer d-flex justify-content-end" id="account-actions-${index}">
+                            <button class="btn btn-sm btn-outline-secondary copy-button me-2" data-index="${index}" style="display: none;">
+                                <i class="fas fa-copy me-1"></i> Copy Result
+                            </button>
+                            <button class="btn btn-sm btn-outline-primary download-button" data-index="${index}" style="display: none;">
+                                <i class="fas fa-download me-1"></i> Download Result
+                            </button>
+                        </div>
+                    `;
+
+                    card.innerHTML = `
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <h6 class="mb-0">Account ${index + 1}: ${account.credentials.split(':')[0]}</h6>
+                        <span class="badge bg-secondary" id="account-status-${index}">Waiting</span>
+                    </div>
+                    <div class="card-body">
+                        <div class="progress mb-2">
+                            <div id="progress-bar-${index}" class="progress-bar" style="width: 0%"></div>
+                        </div>
+                        <div class="log-container" id="account-log-${index}" style="max-height: 150px;">
+                            <div class="text-muted">Waiting to start processing...</div>
+                        </div>
+                    </div>
+                    <div class="card-footer d-flex justify-content-end" id="account-actions-${index}">
+                        <button class="btn btn-sm btn-outline-primary download-button" data-index="${index}" style="display: none;">
+                            <i class="fas fa-download me-1"></i> Download Result
+                        </button>
+                    </div>
+                `;
+
+                    accountsContainer.appendChild(card);
+                });
+
+                // Add event listeners to download buttons
+                document.querySelectorAll('.download-button').forEach(button => {
+                    button.addEventListener('click', (e) => {
+                        const index = parseInt(e.currentTarget.getAttribute('data-index'));
+                        downloadAccountResult(index);
+                    });
+                });
+            }
+
+            // Function to update account status
+            function updateAccountStatus(index, status, data) {
+                const accountCard = document.getElementById(`account-${index}`);
+                const statusBadge = document.getElementById(`account-status-${index}`);
+                const progressBar = document.getElementById(`progress-bar-${index}`);
+                const actionsContainer = document.getElementById(`account-actions-${index}`);
+
+                if (!accountCard) return; // Safety check
+
+                // Remove all status classes
+                accountCard.classList.remove('waiting', 'processing', 'completed', 'error');
+
+                // Update based on status
+                switch (status) {
+                    case 'processing':
+                        accountCard.classList.add('processing');
+                        statusBadge.textContent = 'Processing';
+                        statusBadge.className = 'badge bg-primary';
+                        progressBar.style.width = '50%';
+                        progressBar.className = 'progress-bar progress-bar-striped progress-bar-animated';
+                        break;
+
+                    // در تابع updateAccountStatus()، قسمت case 'completed' را به این صورت تغییر دهید:
+                    case 'completed':
+                        accountCard.classList.add('completed');
+                        statusBadge.textContent = 'Completed';
+                        statusBadge.className = 'badge bg-success';
+                        progressBar.style.width = '100%';
+                        progressBar.className = 'progress-bar bg-success';
+
+                        // Show download and copy buttons
+                        const downloadButton = actionsContainer.querySelector('.download-button');
+                        const copyButton = actionsContainer.querySelector('.copy-button');
+                        if (downloadButton) {
+                            downloadButton.style.display = 'block';
+                        }
+                        if (copyButton) {
+                            copyButton.style.display = 'block';
+                        }
+                        break;
+
+                    case 'error':
+                        accountCard.classList.add('error');
+                        statusBadge.textContent = 'Error';
+                        statusBadge.className = 'badge bg-danger';
+                        progressBar.style.width = '100%';
+                        progressBar.className = 'progress-bar bg-danger';
+
+                        // Add error message
+                        if (data && data.error) {
+                            const logContainer = document.getElementById(`account-log-${index}`);
+                            if (logContainer) {
+                                const errorEntry = document.createElement('div');
+                                errorEntry.className = 'text-danger';
+                                errorEntry.textContent = `Error: ${data.error}`;
+                                logContainer.appendChild(errorEntry);
+                                logContainer.scrollTop = logContainer.scrollHeight;
+                            }
+                        }
+                        break;
+
+                    default:
+                        accountCard.classList.add('waiting');
+                        statusBadge.textContent = 'Waiting';
+                        statusBadge.className = 'badge bg-secondary';
+                        break;
+                }
+            }
+
+            // Function to add log entry to a specific account
+            function addAccountLogEntry(index, message, type = 'info') {
+                const logContainer = document.getElementById(`account-log-${index}`);
+                if (!logContainer) return;
+
+                const logEntry = document.createElement('div');
+                logEntry.textContent = message;
+
+                if (type === 'error') {
+                    logEntry.classList.add('text-danger');
+                } else if (type === 'success') {
+                    logEntry.classList.add('text-success');
+                }
+
+                logContainer.appendChild(logEntry);
+                logContainer.scrollTop = logContainer.scrollHeight;
+            }
+
+            // Function to add global log entry
+            function addGlobalLogEntry(message, type = 'info') {
+                const logEntry = document.createElement('div');
+                logEntry.textContent = message;
+
+                if (type === 'error') {
+                    logEntry.classList.add('text-danger');
+                } else if (type === 'success') {
+                    logEntry.classList.add('text-success', 'fw-bold');
+                }
+
+                globalLog.appendChild(logEntry);
+                globalLog.scrollTop = globalLog.scrollHeight;
+
+                // Also log to console for debugging
+                console.log(`[${type}] ${message}`);
+            }
+
+            // Function to update overall progress
+            function updateOverallProgress() {
+                const totalAccounts = state.accounts.length;
+                const processedAccounts = state.completedCount + state.errorCount;
+                const progressPercentage = totalAccounts > 0 ? (processedAccounts / totalAccounts) * 100 : 0;
+
+                overallProgressBar.style.width = `${progressPercentage}%`;
+                overallProgressText.textContent = `${processedAccounts}/${totalAccounts} Completed`;
+            }
+
+            // Function to check if all accounts are processed
+            function checkBatchCompletion() {
+                const totalAccounts = state.accounts.length;
+                const processedAccounts = state.completedCount + state.errorCount;
+
+                console.log(`Checking batch completion: ${processedAccounts}/${totalAccounts} processed`);
+
+                if (processedAccounts >= totalAccounts && !state.processingCompleted) {
+                    console.log('All accounts processed, marking batch as completed');
+
+                    state.processingCompleted = true;
+
+                    statusBadge.textContent = 'Completed';
+                    statusBadge.classList.remove('bg-info');
+                    statusBadge.classList.add('bg-success');
+
+                    overallProgressBar.classList.remove('progress-bar-animated');
+
+                    addGlobalLogEntry('All accounts processed.', 'success');
+
+                    // اجرای دانلودها با تأخیر
+                    performDownloads();
+
+                    // Show notification
+                    showNotification('All accounts processed successfully!');
+                }
+            }
+
+            // Function to perform downloads with proper timing
+            function performDownloads() {
+                console.log('Performing downloads...');
+
+                // دانلود خودکار اکانت‌های ناموفق اگر وجود داشته باشند
+                if (state.failedAccounts.length > 0) {
+                    setTimeout(() => {
+                        console.log('Downloading failed accounts...');
+                        downloadFailedAccounts();
+                        addGlobalLogEntry('Failed accounts file automatically downloaded.', 'success');
+                    }, 1000);
+                }
+
+                // دانلود خودکار اکانت‌های موفق که هنوز دانلود نشده‌اند
+                setTimeout(() => {
+                    Object.keys(state.allResults).forEach(index => {
+                        index = parseInt(index);
+                        if (state.allResults[index] && state.allResults[index].formattedOutput && !state.downloadedAccounts.has(index)) {
+                            console.log(`Downloading pending result for account ${index + 1}...`);
+                            if (downloadAccountResult(index)) {
+                                state.downloadedAccounts.add(index);
+                                addGlobalLogEntry(`Account ${index + 1} result downloaded.`, 'success');
+                            }
+                        }
+                    });
+                }, 2000);
+            }
+
+            // Function to download all successful results
+            function downloadAllSuccessfulResults() {
+                console.log('Starting downloadAllSuccessfulResults function');
+
+                const successResults = Object.values(state.allResults).filter(result => result && result.formattedOutput);
+
+                if (successResults.length === 0) {
+                    showNotification('No successful results available for download', 'warning');
+                    console.log('No successful results to download');
+                    return;
+                }
+
+                console.log(`Found ${successResults.length} successful results to download`);
+
+                // Create a combined text file with all successful results
+                let combinedOutput = '';
+                successResults.forEach((result, index) => {
+                    combinedOutput += result.formattedOutput;
+
+                    if (index < successResults.length - 1) {
+                        combinedOutput += '\n\n==========================================================\n\n';
+                    }
+                });
+
+                // ایجاد نام فایل با استفاده از ایمیل اکانت
+                let filename = '';
+                const date = new Date().toISOString().split('T')[0]; // Format: YYYY-MM-DD
+
+                if (successResults.length === 1) {
+                    // اگر فقط یک اکانت موفق داریم، از ایمیل آن استفاده می‌کنیم
+                    const email = successResults[0].credentials.split(':')[0];
+                    filename = `${email}-${date}.txt`;
+                } else {
+                    // اگر چندین اکانت موفق داریم، از ایمیل اولین اکانت به همراه تعداد کل استفاده می‌کنیم
+                    const firstEmail = successResults[0].credentials.split(':')[0];
+                    filename = `${firstEmail}-and-${successResults.length - 1}-others-${date}.txt`;
+                }
+
+                console.log(`Creating download with filename: ${filename}`);
+
+                try {
+                    // Create a Blob with the text content
+                    const blob = new Blob([combinedOutput], { type: 'text/plain' });
+
+                    // Create a temporary URL for the Blob
+                    const url = URL.createObjectURL(blob);
+
+                    // Create a temporary anchor element for downloading
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = filename;
+
+                    // Trigger the download
+                    document.body.appendChild(a);
+                    a.click();
+
+                    console.log('Download triggered');
+
+                    // Clean up
+                    setTimeout(() => {
+                        document.body.removeChild(a);
+                        URL.revokeObjectURL(url);
+                        console.log('Download cleanup completed');
+                    }, 100);
+
+                    showNotification('All results downloaded successfully');
+                    return true;
+                } catch (error) {
+                    console.error('Error during download:', error);
+                    addGlobalLogEntry(`Error during download: ${error.message}`, 'error');
+                    showNotification('Error downloading results', 'danger');
+                    return false;
+                }
+            }
+
+            // Function to download failed accounts
+            function downloadFailedAccounts() {
+                console.log('Starting downloadFailedAccounts function');
+
+                if (state.failedAccounts.length === 0) {
+                    console.log('No failed accounts to download');
+                    showNotification('No failed accounts to download', 'warning');
+                    return false;
+                }
+
+                let content = '';
+                state.failedAccounts.forEach((account, index) => {
+                    content += `Email:pass : ${account.credentials}\n`;
+                    content += `Npsso : ${account.npsso}\n`;
+
+                    if (index < state.failedAccounts.length - 1) {
+                        content += '-----------------------------------------------------------------------\n';
+                    }
+                });
+
+                // ایجاد نام فایل با استفاده از تاریخ
+                const date = new Date().toISOString().split('T')[0]; // Format: YYYY-MM-DD
+                const filename = `failed-${date}.txt`;
+
+                console.log(`Creating failed accounts download with filename: ${filename}`);
+
+                try {
+                    // Create a Blob with the text content
+                    const blob = new Blob([content], { type: 'text/plain' });
+
+                    // Create a temporary URL for the Blob
+                    const url = URL.createObjectURL(blob);
+
+                    // Create a temporary anchor element for downloading
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = filename;
+
+                    // Trigger the download
+                    document.body.appendChild(a);
+                    a.click();
+
+                    console.log('Failed accounts download triggered');
+
+                    // Clean up
+                    setTimeout(() => {
+                        document.body.removeChild(a);
+                        URL.revokeObjectURL(url);
+                        console.log('Failed accounts download cleanup completed');
+                    }, 100);
+
+                    showNotification('Failed accounts downloaded');
+                    return true;
+                } catch (error) {
+                    console.error('Error during failed accounts download:', error);
+                    addGlobalLogEntry(`Error during download: ${error.message}`, 'error');
+                    showNotification('Error downloading failed accounts', 'danger');
+                    return false;
+                }
+            }
+
+            // Function to update failed accounts section
+            function updateFailedAccountsSection() {
+                if (state.failedAccounts.length > 0) {
+                    failedAccountsSection.style.display = 'block';
+
+                    let content = '';
+                    state.failedAccounts.forEach((account, index) => {
+                        content += `Email:pass : ${account.credentials}\n`;
+                        content += `Npsso : ${account.npsso}\n`;
+                        content += `Error : ${account.error}\n`;
+
+                        if (index < state.failedAccounts.length - 1) {
+                            content += '-----------------------------------------------------------------------\n';
+                        }
+                    });
+
+                    failedAccountsContent.textContent = content;
+                }
+            }
+
+            // Function to download account result
+            function downloadAccountResult(index) {
+                console.log(`Attempting to download account ${index} result with simplified approach`);
+
+                // Get the result data
+                const result = state.allResults[index];
+                if (!result || !result.formattedOutput) {
+                    alert(`No result content available for account ${index + 1}`);
+                    console.error(`No result available for account ${index}`);
+                    return false;
+                }
+
+                // Get content and create filename
+                const content = result.formattedOutput;
+
+                // Extract email from credentials
+                let email = `account-${index}`;
+                if (result.credentials) {
+                    // اگر credentials به فرمت email:password باشد، ایمیل را استخراج می‌کنیم
+                    email = result.credentials.split(':')[0];
+                } else if (content.includes('Account :')) {
+                    // اگر در محتوای خروجی، خط حاوی ایمیل وجود دارد، از آنجا استخراج می‌کنیم
+                    const accountLine = content.split('\n').find(line => line.includes('Account :'));
+                    if (accountLine) {
+                        const accountMatch = accountLine.match(/Account\s*:\s*([^:]+):/);
+                        if (accountMatch && accountMatch[1]) {
+                            email = accountMatch[1].trim();
+                        }
+                    }
+                }
+
+                // Format date as YYYY-MM-DD
+                const date = new Date().toISOString().split('T')[0];
+
+                // Create filename in format: email-date.txt
+                const filename = `${email}-${date}.txt`;
+
+                console.log(`Preparing download for ${filename} (content length: ${content.length})`);
+
+                try {
+                    // Method 1: Using Blob and createObjectURL
+                    const blob = new Blob([content], { type: 'text/plain' });
+                    const url = URL.createObjectURL(blob);
+
+                    // Create link element
+                    const link = document.createElement('a');
+                    link.href = url;
+                    link.download = filename;
+                    link.style.display = 'none';
+
+                    // Add to DOM, click, and remove
+                    document.body.appendChild(link);
+                    console.log('Download link added to document');
+
+                    link.click();
+                    console.log('Download link clicked');
+
+                    // Cleanup after a delay
+                    setTimeout(() => {
+                        document.body.removeChild(link);
+                        URL.revokeObjectURL(url);
+                        console.log('Download cleanup completed');
+                    }, 1000);
+
+                    addGlobalLogEntry(`File "${filename}" download initiated.`, 'success');
+                    return true;
+                } catch (err) {
+                    console.error('Error in downloadAccountResult:', err);
+                    alert(`Download error: ${err.message}`);
+                    addGlobalLogEntry(`Error downloading file: ${err.message}`, 'error');
+                    return false;
+                }
+            }
+
+            // Alternative download method using data URI
+            function downloadUsingDataURI(index) {
+                console.log(`Attempting to download account ${index} using data URI method`);
+
+                // Get the result data
+                const result = state.allResults[index];
+                if (!result || !result.formattedOutput) {
+                    alert(`No result content available for account ${index + 1}`);
+                    return false;
+                }
+
+                // Get content and create filename
+                const content = result.formattedOutput;
+                const credentials = result.credentials ? result.credentials.split(':')[0] : `account-${index}`;
+                const date = new Date().toISOString().split('T')[0];
+                const filename = `${credentials}-${date}.txt`;
+
+                try {
+                    // Create data URI
+                    const dataUri = 'data:text/plain;charset=utf-8,' + encodeURIComponent(content);
+
+                    // Create link element
+                    const link = document.createElement('a');
+                    link.href = dataUri;
+                    link.download = filename;
+                    link.style.display = 'none';
+
+                    // Add to DOM, click, and remove
+                    document.body.appendChild(link);
+                    link.click();
+
+                    setTimeout(() => {
+                        document.body.removeChild(link);
+                    }, 1000);
+
+                    addGlobalLogEntry(`File "${filename}" download initiated (data URI method).`, 'success');
+                    return true;
+                } catch (err) {
+                    console.error('Error in data URI download:', err);
+                    addGlobalLogEntry(`Error downloading file: ${err.message}`, 'error');
+                    return false;
+                }
+            }
+            // Event listener for download all button
+            downloadAllButton.addEventListener('click', () => {
+                downloadAllSuccessfulResults();
+            });
+
+            // Event listener for download failed button
+            downloadFailedButton.addEventListener('click', () => {
+                downloadFailedAccounts();
+            });
+
+            // Function to show notification
+            function showNotification(message, type = 'success') {
+                notificationToast.querySelector('.toast-body').textContent = message;
+
+                notificationToast.classList.remove('bg-success', 'bg-danger', 'bg-warning');
+
+                switch (type) {
+                    case 'danger':
+                        notificationToast.classList.add('bg-danger');
+                        break;
+                    case 'warning':
+                        notificationToast.classList.add('bg-warning');
+                        break;
+                    default:
+                        notificationToast.classList.add('bg-success');
+                        break;
+                }
+
+                toast.show();
+            }
+        });
+    </script>
+</body>
+
+</html>

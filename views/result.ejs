@@ -4,7 +4,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title><%= title %></title>
+    <title>
+        <%= title %>
+    </title>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
     <link rel="stylesheet" href="/css/style.css">
     <style>
@@ -33,7 +35,7 @@
             margin-bottom: 0;
             white-space: pre-wrap;
         }
-        
+
         .toast-container {
             position: fixed;
             top: 20px;
@@ -71,7 +73,7 @@
                                     Copy
                                 </button>
                                 <button id="download-button" class="btn btn-sm btn-outline-primary">
-                                    Download
+                                    Download Failed Accounts
                                 </button>
                             </div>
                             <div id="final-output" class="output-container">
@@ -89,12 +91,14 @@
 
     <!-- Toast notification for copy feedback -->
     <div class="toast-container">
-        <div id="copy-toast" class="toast align-items-center text-white bg-success" role="alert" aria-live="assertive" aria-atomic="true">
+        <div id="copy-toast" class="toast align-items-center text-white bg-success" role="alert" aria-live="assertive"
+            aria-atomic="true">
             <div class="d-flex">
                 <div class="toast-body">
                     Text copied to clipboard!
                 </div>
-                <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
+                <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"
+                    aria-label="Close"></button>
             </div>
         </div>
     </div>
@@ -112,12 +116,12 @@
             const copyButton = document.getElementById('copy-button');
             const downloadButton = document.getElementById('download-button');
             const copyToast = document.getElementById('copy-toast');
-            
+
             // Initialize Bootstrap toast
             const toast = new bootstrap.Toast(copyToast, {
                 delay: 2000
             });
-    
+
             // Progress tracking
             let progressMessages = [];
             let keyProgressPoints = {
@@ -129,19 +133,19 @@
                 "تعداد کوکی‌های ترکیبی": 80,
                 "پردازش با موفقیت": 95
             };
-            
-            let outputText = '';
-            let userCredentials = 'unknown-user';
-    
+            let outputTexts = []; // Array to store output for each account
+            let userCredentialsList = []; // Array to store credentials for each account
+            let failedAccounts = []; // Array to store failed accounts data
+
             // Connect to Socket.IO
             const socket = io();
-    
+
             console.log('Connecting to Socket.IO...');
-    
+
             // Join the job room when connected
             socket.on('connect', () => {
                 console.log('Socket connected, ID:', socket.id);
-    
+
                 // Join the job room
                 fetch(`/api/job/${jobId}/join`, {
                     method: 'POST',
@@ -161,17 +165,17 @@
                         addLogEntry('Error connecting to server.', 'error');
                     });
             });
-    
+
             // Handle progress updates
             socket.on('progress', (data) => {
                 const message = data.message;
                 addLogEntry(message);
                 progressMessages.push(message);
-                
+
                 // Update progress based on message content
                 updateProgressFromMessage(message);
             });
-    
+
             // Handle data updates
             socket.on('data', (data) => {
                 // Just log that data was received
@@ -180,140 +184,121 @@
                     updateProgress(Math.min(getProgressPercentage() + 1, 95)); // Small increment
                 }
             });
-    
-            // Handle completion
+
+            // Handle completion of individual account
+            socket.on('accountComplete', (data) => {
+                statusBadge.textContent = 'Processing...';
+                addLogEntry(`Account ${data.index + 1} processing completed.`, 'success');
+
+                if (data.results && data.results.formattedOutput) {
+                    outputTexts[data.index] = data.results.formattedOutput;
+                    userCredentialsList[data.index] = data.results.credentials ? data.results.credentials.split(':')[0] : `account-${data.index + 1}`;
+
+                    // Automatically trigger download for successful account
+                    setTimeout(() => {
+                        downloadSuccessfulAccountFile(data.index);
+                        addLogEntry(`File for successful account ${data.index + 1} downloaded automatically.`, 'success');
+                    }, 1000);
+                }
+            });
+
+            // Handle error for individual account
+            socket.on('accountError', (data) => {
+                statusBadge.textContent = 'Processing...';
+                addLogEntry(`Error for account ${data.index + 1}: ${data.error}`, 'error');
+                outputTexts[data.index] = `Error: ${data.error}`;
+                userCredentialsList[data.index] = data.credentials ? data.credentials.split(':')[0] : `account-${data.index + 1}`;
+
+                // Store failed account data
+                console.log("Received failed account data:", data);
+                if (!data.credentials || !data.npsso) {
+                    addLogEntry(`Warning: Missing credentials or NPSSO for failed account ${data.index + 1}`, 'error');
+                }
+                failedAccounts.push({
+                    index: data.index,
+                    credentials: data.credentials || 'Unknown',
+                    npsso: data.npsso || 'Unknown',
+                    error: data.error
+                });
+            });
+
+            // Handle completion of all accounts or single account
             socket.on('complete', (data) => {
                 statusBadge.textContent = 'Completed';
                 statusBadge.classList.remove('bg-info');
                 statusBadge.classList.add('bg-success');
-    
+
                 updateProgress(100); // Set to 100% on completion
                 progressBar.classList.remove('progress-bar-animated');
-    
+
                 addLogEntry('Processing completed successfully.', 'success');
-    
+
                 // Display the final formatted output
-                if (data.results && data.results.formattedOutput) {
-                    outputText = data.results.formattedOutput;
-                    finalOutput.innerHTML = `<pre>${escapeHtml(outputText)}</pre>`;
-                    resultSection.style.display = 'block';
-                    
-                    // Extract credentials for filename if available
-                    if (data.results.credentials) {
-                        userCredentials = data.results.credentials.split(':')[0]; // Get email part
+                if (data.results) {
+                    let combinedOutput = '';
+                    if (Array.isArray(data.results)) {
+                        // Multiple accounts
+                        data.results.forEach((result, index) => {
+                            combinedOutput += `=== Account ${index + 1} ===\n`;
+                            combinedOutput += result.formattedOutput || 'No output available\n';
+                            combinedOutput += `\n`;
+                        });
                     } else {
-                        // Try to extract credentials from the output text
-                        const accountMatch = outputText.match(/Account\s*:\s*([^\n]+)/);
-                        if (accountMatch && accountMatch[1]) {
-                            const accountInfo = accountMatch[1].trim();
-                            if (accountInfo.includes(':')) {
-                                userCredentials = accountInfo.split(':')[0].trim();
-                            } else {
-                                userCredentials = accountInfo;
-                            }
+                        // Single account
+                        combinedOutput = data.results.formattedOutput || 'No output available';
+                        outputTexts[0] = combinedOutput;
+                        if (data.results.credentials) {
+                            userCredentialsList[0] = data.results.credentials.split(':')[0];
+                        }
+                        // Automatically trigger download for single successful account
+                        if (!failedAccounts.some(acc => acc.index === 0)) {
+                            setTimeout(() => {
+                                downloadSuccessfulAccountFile(0);
+                                addLogEntry('File for successful account downloaded automatically.', 'success');
+                            }, 1000);
                         }
                     }
-                    
-                    // Automatically trigger download after a short delay
-                    setTimeout(() => {
-                        downloadFile();
-                        addLogEntry('File download started automatically.', 'success');
-                    }, 1000);
-                } else if (data.results) {
-                    // If formattedOutput is not available, try to create a formatted output from the results
-                    let formattedText = '';
-                    
-                    // Format profile information if available
-                    if (data.results.profile) {
-                        formattedText += "=== PROFILE INFORMATION ===\n";
-                        const profile = data.results.profile;
-                        for (const key in profile) {
-                            formattedText += `${key}: ${profile[key]}\n`;
-                        }
-                        formattedText += "\n";
-                    }
-                    
-                    // Format games information if available
-                    if (data.results.games && data.results.games.length) {
-                        formattedText += "=== GAMES ===\n";
-                        data.results.games.forEach((game, index) => {
-                            formattedText += `${index + 1}. ${game.name} (${game.platform})\n`;
-                        });
-                        formattedText += "\n";
-                    }
-                    
-                    // Format devices information if available
-                    if (data.results.devices && data.results.devices.length) {
-                        formattedText += "=== DEVICES ===\n";
-                        data.results.devices.forEach((device, index) => {
-                            formattedText += `${index + 1}. ${device.name} (${device.platform})\n`;
-                        });
-                        formattedText += "\n";
-                    }
-                    
-                    // Format backup codes if available
-                    if (data.results.backupCodes && data.results.backupCodes.length) {
-                        formattedText += "=== BACKUP CODES ===\n";
-                        data.results.backupCodes.forEach((code, index) => {
-                            formattedText += `${code}${index % 2 === 1 ? '\n' : '\t'}`;
-                        });
-                        formattedText += "\n";
-                    }
-                    
-                    // Format transactions if available
-                    if (data.results.trans) {
-                        formattedText += "=== TRANSACTIONS ===\n";
-                        formattedText += data.results.trans + "\n\n";
-                    }
-                    
-                    // Add any other data
-                    for (const key in data.results) {
-                        if (!['profile', 'games', 'devices', 'backupCodes', 'trans', 'formattedOutput', 'credentials'].includes(key)) {
-                            try {
-                                formattedText += `=== ${key.toUpperCase()} ===\n`;
-                                if (typeof data.results[key] === 'object') {
-                                    formattedText += JSON.stringify(data.results[key], null, 2) + "\n\n";
-                                } else {
-                                    formattedText += data.results[key] + "\n\n";
-                                }
-                            } catch (e) {
-                                formattedText += `[Error formatting ${key}]\n\n`;
-                            }
-                        }
-                    }
-                    
-                    outputText = formattedText;
-                    finalOutput.innerHTML = `<pre>${escapeHtml(outputText)}</pre>`;
+                    finalOutput.innerHTML = `<pre>${escapeHtml(combinedOutput)}</pre>`;
                     resultSection.style.display = 'block';
-                    
-                    // Automatically trigger download after a short delay
-                    setTimeout(() => {
-                        downloadFile();
-                        addLogEntry('File download started automatically.', 'success');
-                    }, 1000);
+                }
+
+                // Check if there are failed accounts and create/download the file
+                if (failedAccounts.length > 0) {
+                    addLogEntry('Creating and downloading failed accounts file...', 'info');
+                    downloadFailedAccountsFile();
                 }
             });
-    
+
             // Handle errors
             socket.on('error', (data) => {
                 statusBadge.textContent = 'Error';
                 statusBadge.classList.remove('bg-info');
                 statusBadge.classList.add('bg-danger');
-    
+
                 addLogEntry(`Error: ${data.error}`, 'error');
+                outputTexts[0] = `Error: ${data.error}`;
+                userCredentialsList[0] = 'unknown-user';
             });
-    
+
             // Copy button functionality - Multiple approaches
             copyButton.addEventListener('click', () => {
-                if (!outputText) {
+                const combinedText = outputTexts.join('\n\n=== Next Account ===\n\n');
+                if (!combinedText) {
                     addLogEntry('No text available to copy.', 'error');
                     return;
                 }
-                
-                // Method 1: Using Clipboard API
-                copyTextToClipboard(outputText);
+                copyTextToClipboard(combinedText);
             });
-    
+
+            // Download failed accounts button functionality
+            downloadButton.addEventListener('click', () => {
+                if (failedAccounts.length > 0) {
+                    downloadFailedAccountsFile();
+                } else {
+                    addLogEntry('No failed accounts to download.', 'error');
+                }
+            });
+
             // Function to update progress based on message content
             function updateProgressFromMessage(message) {
                 // Check for key progress points
@@ -323,14 +308,14 @@
                         return;
                     }
                 }
-                
+
                 // If no key phrases matched, make a small increment
                 const currentProgress = getProgressPercentage();
                 if (currentProgress < 95) {
                     updateProgress(currentProgress + 0.5);
                 }
             }
-    
+
             // Function to get current progress percentage
             function getProgressPercentage() {
                 const currentWidth = progressBar.style.width;
@@ -339,18 +324,18 @@
                 }
                 return 0;
             }
-    
+
             // Function to update progress bar
             function updateProgress(percentage) {
                 const roundedPercentage = Math.min(Math.round(percentage), 100);
                 progressBar.style.width = `${roundedPercentage}%`;
                 progressBar.textContent = `${roundedPercentage}%`;
             }
-    
+
             // Function to copy text to clipboard using multiple fallback methods
             function copyTextToClipboard(text) {
                 console.log("Attempting to copy text, length:", text.length);
-                
+
                 // Method 1: Modern Clipboard API
                 if (navigator.clipboard && window.isSecureContext) {
                     console.log("Using Clipboard API");
@@ -368,26 +353,26 @@
                     fallbackCopyTextToClipboard(text);
                 }
             }
-            
+
             // Fallback copy method using document.execCommand
             function fallbackCopyTextToClipboard(text) {
                 try {
                     // Create a temporary textarea element
                     const textarea = document.createElement('textarea');
                     textarea.value = text;
-                    
+
                     // Make it invisible but part of the document
                     textarea.style.position = 'fixed';
                     textarea.style.opacity = '0';
                     document.body.appendChild(textarea);
-                    
+
                     // Select and copy
                     textarea.select();
                     const successful = document.execCommand('copy');
-                    
+
                     // Clean up
                     document.body.removeChild(textarea);
-                    
+
                     if (successful) {
                         showCopySuccess();
                     } else {
@@ -399,100 +384,140 @@
                     showCopyError();
                 }
             }
-            
+
             // Show copy success feedback
             function showCopySuccess() {
                 // Visual feedback on the button
                 copyButton.classList.remove('btn-outline-secondary');
                 copyButton.classList.add('btn-success');
                 copyButton.textContent = 'Copied!';
-                
+
                 // Show toast notification
                 toast.show();
-                
+
                 // Reset button after delay
                 setTimeout(() => {
                     copyButton.classList.remove('btn-success');
                     copyButton.classList.add('btn-outline-secondary');
                     copyButton.textContent = 'Copy';
                 }, 2000);
-                
+
                 // Log success
                 addLogEntry('Text copied to clipboard.', 'success');
             }
-            
+
             // Show copy error feedback
             function showCopyError() {
                 copyButton.classList.remove('btn-outline-secondary');
                 copyButton.classList.add('btn-danger');
                 copyButton.textContent = 'Copy Failed';
-                
+
                 setTimeout(() => {
                     copyButton.classList.remove('btn-danger');
                     copyButton.classList.add('btn-outline-secondary');
                     copyButton.textContent = 'Copy';
                 }, 2000);
-                
+
                 addLogEntry('Failed to copy text to clipboard.', 'error');
             }
-    
-            // Download button functionality
-            downloadButton.addEventListener('click', () => {
-                downloadFile();
-            });
-            
-            // Function to download the file
-            function downloadFile() {
-                if (outputText) {
+
+            // Function to download file for a successful account
+            function downloadSuccessfulAccountFile(accountIndex) {
+                if (outputTexts[accountIndex]) {
                     // Create filename with format credentials-date.txt
                     const date = new Date().toISOString().split('T')[0]; // Format: YYYY-MM-DD
-                    const filename = `${userCredentials}-${date}.txt`;
-                    
+                    const filename = `${userCredentialsList[accountIndex]}-${date}.txt`;
+
                     // Create a Blob with the text content
-                    const blob = new Blob([outputText], { type: 'text/plain' });
-                    
+                    const blob = new Blob([outputTexts[accountIndex]], { type: 'text/plain' });
+
                     // Create a temporary URL for the Blob
                     const url = URL.createObjectURL(blob);
-                    
+
                     // Create a temporary anchor element for downloading
                     const a = document.createElement('a');
                     a.href = url;
                     a.download = filename;
-                    
+
                     // Trigger the download
                     document.body.appendChild(a);
                     a.click();
-                    
+
                     // Clean up
                     setTimeout(() => {
                         document.body.removeChild(a);
                         URL.revokeObjectURL(url);
                     }, 0);
-                    
-                    addLogEntry(`File "${filename}" downloaded.`, 'success');
+
+                    addLogEntry(`File "${filename}" downloaded for successful account.`, 'success');
                 } else {
-                    addLogEntry('No content available to download.', 'error');
+                    addLogEntry(`No content available to download for account ${accountIndex + 1}.`, 'error');
                 }
             }
-    
+
+            // Function to download the failed accounts file (created on client side)
+            function downloadFailedAccountsFile() {
+                if (failedAccounts.length === 0) {
+                    addLogEntry('No failed accounts to download.', 'error');
+                    return;
+                }
+
+                // Create content for failed accounts file
+                let content = '';
+                failedAccounts.forEach((account, index) => {
+                    content += `Email:pass : ${account.credentials}\n`;
+                    content += `Npsso : ${account.npsso}\n`;
+                    if (index < failedAccounts.length - 1) {
+                        content += '-----------------------------------------------------------------------\n';
+                    }
+                });
+
+                // Create filename with format failed-accounts-date.txt
+                const date = new Date().toISOString().split('T')[0]; // Format: YYYY-MM-DD
+                const filename = `failed-accounts-${date}.txt`;
+
+                // Create a Blob with the text content
+                const blob = new Blob([content], { type: 'text/plain' });
+
+                // Create a temporary URL for the Blob
+                const url = URL.createObjectURL(blob);
+
+                // Create a temporary anchor element for downloading
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = filename;
+
+                // Trigger the download
+                document.body.appendChild(a);
+                a.click();
+
+                // Clean up
+                setTimeout(() => {
+                    document.body.removeChild(a);
+                    URL.revokeObjectURL(url);
+                }, 0);
+
+                addLogEntry(`Failed accounts file "${filename}" downloaded.`, 'success');
+            }
+
             // Helper function to add log entries
             function addLogEntry(message, type = 'info') {
                 const logEntry = document.createElement('div');
                 logEntry.textContent = message;
-                
+
                 if (type === 'error') {
                     logEntry.classList.add('text-danger');
                 } else if (type === 'success') {
                     logEntry.classList.add('text-success', 'fw-bold');
                 }
-                
+
                 progressLog.appendChild(logEntry);
                 progressLog.scrollTop = progressLog.scrollHeight;
-                
+
                 // Also log to console for debugging
                 console.log(`[${type}] ${message}`);
             }
-    
+
             // Helper function to escape HTML
             function escapeHtml(unsafe) {
                 return unsafe
