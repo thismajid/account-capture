@@ -132,7 +132,7 @@ const fetchApiData = async (allCookies, finalResponses, onProgress) => {
             },
             processData: (data) => ({
                 transactionNumbers: data.transactions?.length || 0,
-                trans: data.hasMore && data.transactions
+                trans: data.transactions.length > 0 && data.transactions
                     .filter(t => (t.additionalInfo?.orderItems?.[0]?.totalPrice &&
                         Math.abs(t.additionalInfo.orderItems[0].totalPrice.value) > 0) ||
                         (t.additionalInfo?.voucherPayments?.length > 0 && t.additionalInfo?.voucherPayments[0].voucherCode) && t.invoiceType !== 'WALLET_FUNDING')
