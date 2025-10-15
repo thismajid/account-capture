@@ -132,16 +132,27 @@ const fetchApiData = async (allCookies, finalResponses, onProgress) => {
             },
             processData: (data) => ({
                 transactionNumbers: data.transactions?.length || 0,
-                trans: data.transactions.length > 0 && data.transactions
-                    .filter(t => (t.additionalInfo?.orderItems?.[0]?.totalPrice &&
-                        Math.abs(t.additionalInfo.orderItems[0].totalPrice.value) > 0) ||
-                        (t.additionalInfo?.voucherPayments?.length > 0 && t.additionalInfo?.voucherPayments[0].voucherCode) && t.invoiceType !== 'WALLET_FUNDING')
-                    .map(t => {
-                        const fullSkuId = t.additionalInfo.orderItems[0].skuId;
-                        const match = fullSkuId.match(/([A-Z0-9]+-[A-Z0-9]+_[0-9]+)/);
-                        const formattedSkuId = match ? match[0] : fullSkuId;
-                        return `${t.additionalInfo.orderItems[0].productName} [${t.additionalInfo?.voucherPayments?.length > 0 && t.additionalInfo?.voucherPayments[0].voucherCode ? "Gift Card" : t.additionalInfo.orderItems[0].totalPrice.formattedValue}] | [ ${formattedSkuId} ] | [ ${new Date(t.transactionDetail.transactionDate).getMonth() + 1}/${new Date(t.transactionDetail.transactionDate).getDate()}/${new Date(t.transactionDetail.transactionDate).getFullYear()} ]`;
-                    }).join("\n")
+                trans: Array.isArray(data.transactions) && data.transactions.length > 0
+                    ? data.transactions
+                        .filter(t =>
+                            (t.additionalInfo?.orderItems?.[0]?.totalPrice &&
+                                Math.abs(t.additionalInfo.orderItems[0].totalPrice.value) > 0) ||
+                            ((t.additionalInfo?.voucherPayments?.length > 0 &&
+                                t.additionalInfo.voucherPayments[0]?.voucherCode) &&
+                                t.invoiceType !== 'WALLET_FUNDING')
+                        )
+                        .map(t => {
+                            const fullSkuId = t.additionalInfo?.orderItems?.[0]?.skuId || "";
+                            const match = fullSkuId.match(/([A-Z0-9]+-[A-Z0-9]+_[0-9]+)/);
+                            const formattedSkuId = match ? match[0] : fullSkuId;
+                            return `${t.additionalInfo?.orderItems?.[0]?.productName || ""} [${
+                                t.additionalInfo?.voucherPayments?.[0]?.voucherCode
+                                    ? "Gift Card"
+                                    : t.additionalInfo?.orderItems?.[0]?.totalPrice?.formattedValue || ""
+                            }] | [ ${formattedSkuId} ] | [ ${new Date(t.transactionDetail.transactionDate).getMonth() + 1}/${new Date(t.transactionDetail.transactionDate).getDate()}/${new Date(t.transactionDetail.transactionDate).getFullYear()} ]`;
+                        })
+                        .join("\n")
+                    : ""
             })
         }
     ];
