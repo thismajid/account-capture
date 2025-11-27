@@ -3,7 +3,7 @@ import json
 from psnawp_api import PSNAWP
 
 def main():
-    npsso = sys.argv[1]  # گرفتن npsso از آرگومان
+    npsso = sys.argv[1]
 
     psnawp = PSNAWP(npsso)
     client = psnawp.me()
