@@ -15,7 +15,7 @@ const CONSTANTS = {
         "https://accounts.api.playstation.com/api/v1/accounts/me/communication",
         /\/twostepbackupcodes$/,
         "https://accounts.api.playstation.com/api/v1/accounts/me/addresses",
-        "https://web.np.playstation.com/api/graphql/v2/transact/wallets/savedInstruments",
+        // "https://web.np.playstation.com/api/graphql/v2/transact/wallets/savedInstruments",
         'https://web.np.playstation.com/api/graphql/v1//op?operationName=getUserSubscriptions'
     ],
     PAGE_CONFIGS: {
@@ -29,7 +29,7 @@ const CONSTANTS = {
             name: "page2",
             waitTime: 5000,
         },
-        API_URL: "https://web.np.playstation.com/api/graphql/v2/transact/wallets/paymentMethods?tenant=PSN",
+       // API_URL: "https://web.np.playstation.com/api/graphql/v2/transact/wallets/paymentMethods?tenant=PSN",
     },
     XPATHS: {
         ERROR: "/html/body/div[3]/div/div[2]/div/div/div/div/div[4]/div/div[1]",
@@ -669,6 +669,8 @@ async function runPsnApiTool(options) {
                     : false;
                 const countryCode = finalResponses.address?.country || null;
 
+                // - Balance : ${finalResponses.wallets?.debtBalance}.${finalResponses.wallets?.currentAmount} ${finalResponses.wallets?.currencyCode || ""}
+
                 // Create final output
                 const output = `
 ----------------------- « Account Info » -----------------------
@@ -677,7 +679,6 @@ async function runPsnApiTool(options) {
 - Backup Codes : [ ${finalResponses.backupCodes ? finalResponses.backupCodes.join(" - ") : "N/A"} ]
 --------------------------- « Details » --------------------------
 - Country | City | Postal Code : ${countryCode ? (countries.find(item => item.code === countryCode)).name : "N/A"} - ${finalResponses.address?.city || "N/A"} - ${finalResponses.address?.postalCode || "N/A"}
-- Balance : ${finalResponses.wallets?.debtBalance}.${finalResponses.wallets?.currentAmount} ${finalResponses.wallets?.currencyCode || ""}
 - PSN ID : ${finalResponses.profile?.onlineId || "N/A"}
 - Payments : ${finalResponses.creditCards || "Not Found"} 
 - PS Plus : ${finalResponses.profile?.isPsPlusMember ? `Yes! - ${finalResponses.plusTitle} | ${finalResponses.plusExpireDate}` : "No!"}
